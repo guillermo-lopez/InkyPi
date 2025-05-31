@@ -14,7 +14,12 @@ from google.auth.transport.requests import Request
 class GoogleCalendarAuth:
     """Handles Google Calendar OAuth2 authentication flow."""
     
-    SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
+    SCOPES = [
+        'https://www.googleapis.com/auth/calendar.readonly',  # Read calendar events
+        'https://www.googleapis.com/auth/calendar.events.readonly',  # Read calendar events
+        'https://www.googleapis.com/auth/calendar.settings.readonly',  # Read calendar settings
+        'https://www.googleapis.com/auth/calendar.calendars.readonly'  # Read calendar list
+    ]
     REDIRECT_URI = "http://localhost:8000/callback"
     
     def __init__(self, client_id: str, client_secret: str):
@@ -66,7 +71,24 @@ class GoogleCalendarAuth:
         with open(self.token_file, 'w') as f:
             json.dump(token_data, f, indent=2)
         
-        print("New Google Calendar access token saved")
+        print("\nToken Information:")
+        print("=" * 80)
+        print(f"Access Token: {credentials.token}")
+        print(f"Refresh Token: {credentials.refresh_token}")
+        print(f"Token URI: {credentials.token_uri}")
+        print(f"Client ID: {credentials.client_id}")
+        print(f"Client Secret: {credentials.client_secret}")
+        print("\nScopes:")
+        for scope in credentials.scopes:
+            print(f"- {scope}")
+        print("\nToken Expiry:", credentials.expiry)
+        print("=" * 80)
+        print("\nNew Google Calendar access token saved to:", self.token_file)
+        print("\nAdd these to your .env file:")
+        print(f"GOOGLE_CALENDAR_ACCESS_TOKEN={credentials.token}")
+        print(f"GOOGLE_CALENDAR_CLIENT_ID={credentials.client_id}")
+        print(f"GOOGLE_CALENDAR_CLIENT_SECRET={credentials.client_secret}")
+        print(f"GOOGLE_CALENDAR_REFRESH_TOKEN={credentials.refresh_token}")
 
     def load_tokens(self) -> Credentials | None:
         """Load OAuth2 credentials from file or environment variables."""
@@ -131,14 +153,8 @@ class GoogleCalendarAuth:
             flow.fetch_token(code=auth_code)
             credentials = flow.credentials
             
-            print("\nToken Information:")
-            print(f"Access Token: {credentials.token}")
-            print(f"Refresh Token: {credentials.refresh_token}")
-            print(f"Token URI: {credentials.token_uri}")
-            print(f"Scopes: {credentials.scopes}\n")
-            
             if not credentials.refresh_token:
-                print("Warning: No refresh token received. User may have already authorized this app.")
+                print("\nWarning: No refresh token received. User may have already authorized this app.")
                 print("Try revoking access at https://myaccount.google.com/permissions and re-running.")
             
             self.save_tokens(credentials)

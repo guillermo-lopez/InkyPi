@@ -1,6 +1,6 @@
 from googleapiclient.discovery import build
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from google.oauth2.credentials import Credentials
 from dotenv import load_dotenv
 import os
@@ -20,13 +20,43 @@ class CalendarEvent:
     is_all_day: bool
     source: str = 'google'
     color: str = 'blue'
+    calendar_name: str = 'primary'
 
 class GoogleCalendar:
     """Service class for interacting with Google Calendar API."""
     
+    # Default colors for different calendars
+    CALENDAR_COLORS = {
+        'primary': 'red',
+        'work': 'blue',
+        'personal': 'green',
+        'family': 'purple',
+        'holidays': 'orange',
+        'birthdays': 'pink'
+    }
+    
     def __init__(self):
         self.service = None
         self._credentials: Optional[Credentials] = None
+        self._calendar_ids: Dict[str, str] = {}
+        self._load_calendar_ids()
+
+    def _load_calendar_ids(self) -> None:
+        """Load calendar IDs from environment variables."""
+        load_dotenv()
+        
+        # Load primary calendar ID
+        primary_id = os.getenv('GOOGLE_CALENDAR_ID', 'primary')
+        self._calendar_ids['primary'] = primary_id
+        
+        # Load additional calendar IDs
+        calendar_prefix = 'GOOGLE_CALENDAR_ID_'
+        for key, value in os.environ.items():
+            if key.startswith(calendar_prefix):
+                calendar_name = key[len(calendar_prefix):].lower()
+                self._calendar_ids[calendar_name] = value
+        
+        logger.info(f"Loaded {len(self._calendar_ids)} calendar IDs")
 
     def _load_credentials_from_env(self) -> Optional[Credentials]:
         """Load credentials from environment variables."""
@@ -95,10 +125,16 @@ class GoogleCalendar:
     def _parse_event_datetime(self, dt_str: str) -> tuple[datetime, bool]:
         """Parse event datetime string and determine if it's an all-day event."""
         if 'T' in dt_str:  # Has time component
-            return datetime.fromisoformat(dt_str.replace('Z', '+00:00')), False
-        return datetime.fromisoformat(dt_str), True
+            # Parse the ISO format string and ensure it's timezone-aware
+            dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt, False
+        # For all-day events, use midnight UTC
+        dt = datetime.fromisoformat(dt_str).replace(tzinfo=timezone.utc)
+        return dt, True
 
-    def _format_event(self, event: Dict[str, Any]) -> CalendarEvent:
+    def _format_event(self, event: Dict[str, Any], calendar_name: str) -> CalendarEvent:
         """Convert Google Calendar event to standardized format."""
         start = event['start'].get('dateTime', event['start'].get('date'))
         end = event['end'].get('dateTime', event['end'].get('date'))
@@ -106,23 +142,27 @@ class GoogleCalendar:
         start_dt, is_all_day = self._parse_event_datetime(start)
         end_dt, _ = self._parse_event_datetime(end)
         
+        # Get color from event or use calendar's default color
+        color = event.get('colorId', self.CALENDAR_COLORS.get(calendar_name, 'blue'))
+        
         return CalendarEvent(
             title=event['summary'],
             start=start_dt,
             end=end_dt,
             is_all_day=is_all_day,
-            color=event.get('colorId', 'blue')
+            color=color,
+            calendar_name=calendar_name
         )
 
     def get_events(self, device_config: Any) -> List[CalendarEvent]:
         """
-        Fetch events from Google Calendar API.
+        Fetch events from multiple Google Calendars.
         
         Args:
             device_config: Configuration object containing environment variables
             
         Returns:
-            List[CalendarEvent]: List of calendar events
+            List[CalendarEvent]: List of calendar events from all configured calendars
             
         Raises:
             RuntimeError: If API call fails or credentials are invalid
@@ -131,24 +171,37 @@ class GoogleCalendar:
             self._initialize_service()
             
             # Get the current week's start and end
-            now = datetime.now()
+            now = datetime.now(timezone.utc)
             week_start = now - timedelta(days=now.weekday())
             week_end = week_start + timedelta(days=6)
             
             # Format dates for Google Calendar API
-            time_min = week_start.isoformat() + 'Z'
-            time_max = week_end.isoformat() + 'Z'
+            time_min = week_start.isoformat()
+            time_max = week_end.isoformat()
             
-            events_result = self.service.events().list(
-                calendarId='primary',
-                timeMin=time_min,
-                timeMax=time_max,
-                singleEvents=True,
-                orderBy='startTime'
-            ).execute()
+            all_events = []
             
-            events = events_result.get('items', [])
-            return [self._format_event(event) for event in events]
+            # Fetch events from each calendar
+            for calendar_name, calendar_id in self._calendar_ids.items():
+                try:
+                    events_result = self.service.events().list(
+                        calendarId=calendar_id,
+                        timeMin=time_min,
+                        timeMax=time_max,
+                        singleEvents=True,
+                        orderBy='startTime'
+                    ).execute()
+                    
+                    events = events_result.get('items', [])
+                    calendar_events = [self._format_event(event, calendar_name) for event in events]
+                    all_events.extend(calendar_events)
+                    
+                    logger.info(f"Retrieved {len(calendar_events)} events from calendar: {calendar_name}")
+                except Exception as e:
+                    logger.error(f"Error fetching events from calendar {calendar_name}: {e}")
+                    continue
+            
+            return all_events
             
         except Exception as e:
             logger.error(f"Error fetching Google Calendar events: {e}")
