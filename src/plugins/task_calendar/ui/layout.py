@@ -1,7 +1,9 @@
 """Calendar layout calculations and positioning."""
 
 from datetime import datetime, timedelta
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Union
+from ..services.google_calendar import CalendarEvent
+from ..services.ticktick import TickTickTask
 
 def calculate_week_start() -> datetime:
     """Calculate the start of the current week (Sunday)."""
@@ -13,23 +15,23 @@ def calculate_day_index(date: datetime, week_start: datetime) -> int:
     """Calculate the day index (0-6) for a given date."""
     return (date.date() - week_start.date()).days
 
-def calculate_item_height(item: Dict[str, Any], base_height: int) -> int:
+def calculate_item_height(item: Union[CalendarEvent, TickTickTask], base_height: int) -> int:
     """
     Calculate the height of an item based on its duration.
     
     Args:
-        item: Calendar item dictionary
+        item: Calendar item (either CalendarEvent or TickTickTask)
         base_height: Base height for a standard item
         
     Returns:
         Height in pixels
     """
-    if item['is_all_day']:
+    if item.is_all_day:
         return base_height
         
     # Calculate duration in minutes
     try:
-        duration = item['end'] - item['start']
+        duration = item.end - item.start
         duration_minutes = duration.total_seconds() / 60
     except (TypeError, AttributeError):
         # If duration can't be calculated, use minimum height

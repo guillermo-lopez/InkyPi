@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
+from dataclasses import dataclass
 import requests
 
 logger = logging.getLogger(__name__)
@@ -10,10 +11,21 @@ TICKTICK_API_BASE_URL = "https://api.ticktick.com/open/v1"
 TICKTICK_INBOX_PROJECT_ID = "inbox124950952"
 DATE_FORMAT = '%Y-%m-%dT%H:%M:%S.%f%z'
 
+@dataclass
+class TickTickTask:
+    """Represents a TickTick task with standardized fields."""
+    title: str
+    start: datetime
+    end: datetime
+    is_all_day: bool
+    completed: bool
+    priority: int
+    source: str = 'ticktick'
+
 class TickTick:
     """A class to interact with the TickTick API and manage tasks."""
     
-    def get_tasks(self, device_config: Any) -> List[Dict[str, Any]]:
+    def get_tasks(self, device_config: Any) -> List[TickTickTask]:
         """
         Fetch tasks from TickTick API.
         
@@ -21,7 +33,7 @@ class TickTick:
             device_config: Configuration object containing environment variables
             
         Returns:
-            List[Dict[str, Any]]: List of tasks with their metadata
+            List[TickTickTask]: List of tasks with their metadata
             
         Raises:
             RuntimeError: If API key is not configured or token is invalid
@@ -91,7 +103,7 @@ class TickTick:
         self, 
         tasks: List[Dict[str, Any]], 
         week_start: datetime
-    ) -> List[Dict[str, Any]]:
+    ) -> List[TickTickTask]:
         """
         Organize tasks for calendar rendering, extracting start/end times and all-day status.
         
@@ -100,7 +112,7 @@ class TickTick:
             week_start (datetime): Start of the current week
             
         Returns:
-            List[Dict[str, Any]]: List of tasks with start/end times and other metadata
+            List[TickTickTask]: List of tasks with start/end times and other metadata
         """
         calendar_tasks = []
         week_end = week_start + timedelta(days=6)
@@ -121,7 +133,7 @@ class TickTick:
         task: Dict[str, Any], 
         week_start: datetime, 
         week_end: datetime
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[TickTickTask]:
         """
         Process a single task and convert it to calendar format.
         
@@ -131,7 +143,7 @@ class TickTick:
             week_end (datetime): End of the current week
             
         Returns:
-            Optional[Dict[str, Any]]: Processed task or None if task should be skipped
+            Optional[TickTickTask]: Processed task or None if task should be skipped
         """
         # Skip if no start or due date
         if not task.get('startDate') and not task.get('dueDate'):
@@ -153,15 +165,14 @@ class TickTick:
             if end_dt.date() < week_start.date() or start_dt.date() > week_end.date():
                 return None
                 
-            return {
-                'title': task['title'],
-                'completed': task.get('status', 0) == 2,
-                'priority': task.get('priority', 0),
-                'start': start_dt,
-                'end': end_dt,
-                'is_all_day': task.get('isAllDay', False),
-                'source': 'ticktick'
-            }
+            return TickTickTask(
+                title=task['title'],
+                completed=task.get('status', 0) == 2,
+                priority=task.get('priority', 0),
+                start=start_dt,
+                end=end_dt,
+                is_all_day=task.get('isAllDay', False)
+            )
         except (ValueError, TypeError) as e:
             logger.warning(f"Failed to parse dates for task {task.get('title', 'Unknown')}: {str(e)}")
             return None
