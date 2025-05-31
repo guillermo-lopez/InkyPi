@@ -4,8 +4,8 @@ from typing import Dict
 
 # Priority colors for tasks
 PRIORITY_COLORS: Dict[int, str] = {
-    0: 'black',   # Normal
-    1: 'blue',    # Low
+    0: 'blue',   # Normal
+    1: 'black',    # Low
     2: 'orange',  # Medium
     3: 'pink'     # High
 }

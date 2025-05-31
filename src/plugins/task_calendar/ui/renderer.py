@@ -51,14 +51,15 @@ class CalendarRenderer:
             
             # Use yellow background for current day
             is_today = date.date() == today.date()
-            header_color = '#ffff00' if is_today else '#f7f7f7'
+            header_color = '#666666' if is_today else '#f7f7f7'
+            text_color = 'white' if is_today else 'black'
             
             draw.rectangle([x, 0, x + day_width, HEADER_HEIGHT], 
                          outline='black', fill=header_color)
             draw.text((x + PADDING, PADDING), day_name, 
-                     fill='black', font=self.header_font)
+                     fill=text_color, font=self.header_font)
             draw.text((x + PADDING, PADDING + 25), day_num, 
-                     fill='black', font=self.header_font)
+                     fill=text_color, font=self.header_font)
 
         # Draw vertical grid lines
         for i in range(8):
