@@ -45,7 +45,9 @@ task_calendar/
 source /usr/local/inkypi/venv_inkypi/bin/activate
 ```
 ```
-pip install google-api-python-client
+sudo /usr/local/inkypi/venv_inkypi/bin/pip install google-api-python-client
+sudo /usr/local/inkypi/venv_inkypi/bin/pip install google-auth-oauthlib
+sudo /usr/local/inkypi/venv_inkypi/bin/pip install google-auth-httplib2
 ```
 ```
 deactivate
