@@ -6,8 +6,8 @@ A unified calendar plugin for InkyPi that displays both Google Calendar events a
 
 - **Unified Calendar View**: Combines Google Calendar events and TickTick tasks in a single weekly view
 - **Color Coding**:
-  - Google Calendar events: Blue
-  - TickTick tasks: Color-coded by priority (Normal: Black, Low: Blue, Medium: Orange, High: Red)
+  - Google Calendar events: Red
+  - TickTick tasks: Color-coded by priority (Normal: Black, Low: Blue, Medium: Orange, High: Pink)
   - Completed tasks: Gray
 - **Time Display**: Shows events in 12-hour format (e.g., "9:30 AM")
 - **All-day Events**: Displays both all-day events and timed events
@@ -22,10 +22,39 @@ task_calendar/
 ├── services/               # Service implementations
 │   ├── google_calendar.py  # Google Calendar service
 │   └── ticktick.py        # TickTick service
+├── ui/                     # UI components
+│   ├── layout.py          # Calendar layout calculations
+│   ├── renderer.py        # Calendar rendering logic
+│   └── styles.py          # Visual styling constants
 ├── task_calendar.py        # Main plugin implementation
 ├── debug_google_calendar.py # Debug script for Google Calendar
 └── README.md              # This file
 ```
+
+## Component Overview
+
+### UI Components
+- **layout.py**: Handles calendar layout calculations, including:
+  - Week start date calculation
+  - Day index computation
+  - Item height calculations based on duration
+  - Calendar dimensions and positioning
+
+- **renderer.py**: Manages all drawing operations:
+  - Calendar structure (headers, grid lines)
+  - Event and task rendering
+  - Font management
+  - Timestamp display
+
+- **styles.py**: Contains all visual constants:
+  - Color definitions for priorities and events
+  - Layout dimensions and spacing
+  - Font sizes
+  - Text length limits
+
+### Services
+- **google_calendar.py**: Handles Google Calendar API integration
+- **ticktick.py**: Manages TickTick API integration
 
 ## Setup
 
