@@ -129,6 +129,7 @@ def authenticate():
                 data.get('access_token'),
                 data.get('refresh_token')
             )
+            print(data)
             print("Successfully authenticated with TickTick!")
             return auth
     

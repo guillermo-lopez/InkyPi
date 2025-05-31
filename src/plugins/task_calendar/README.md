@@ -11,8 +11,21 @@ A unified calendar plugin for InkyPi that displays both Google Calendar events a
   - Completed tasks: Gray
 - **Time Display**: Shows events in 12-hour format (e.g., "9:30 AM")
 - **All-day Events**: Displays both all-day events and timed events
-- **Automatic Authentication**: Handles OAuth2 authentication for both services
-- **Token Management**: Automatically refreshes expired tokens
+- **Simple Authentication**: Uses environment variables or token file for authentication
+- **No OAuth Flow**: No need for browser-based authentication after initial setup
+
+## Directory Structure
+
+```
+task_calendar/
+├── auth/                    # Authentication related code
+├── services/               # Service implementations
+│   ├── google_calendar.py  # Google Calendar service
+│   └── ticktick.py        # TickTick service
+├── task_calendar.py        # Main plugin implementation
+├── debug_google_calendar.py # Debug script for Google Calendar
+└── README.md              # This file
+```
 
 ## Setup
 
@@ -26,6 +39,20 @@ A unified calendar plugin for InkyPi that displays both Google Calendar events a
    - requests
    - python-dotenv
    - Pillow
+
+### Add missing packages
+```
+source /usr/local/inkypi/venv_inkypi/bin/activate
+```
+```
+pip install google-api-python-client
+```
+```
+deactivate
+```
+```
+sudo systemctl restart inkypi.service
+```
 
 ### Google Calendar Setup
 
@@ -52,27 +79,42 @@ Create a `.env` file in your project root with the following variables:
 # Google Calendar
 GOOGLE_CALENDAR_CLIENT_ID=your_google_client_id
 GOOGLE_CALENDAR_CLIENT_SECRET=your_google_client_secret
+GOOGLE_CALENDAR_ACCESS_TOKEN=your_google_access_token
 
 # TickTick
 TICKTICK_CLIENT_ID=your_ticktick_client_id
 TICKTICK_CLIENT_SECRET=your_ticktick_client_secret
 ```
 
+### Getting Google Calendar Access Token
+
+To get your Google Calendar access token:
+
+1. Run the debug script once to get the token:
+```bash
+python3 src/plugins/task_calendar/debug_google_calendar.py
+```
+
+2. The script will:
+   - Open your browser for authentication
+   - Save the token to `~/.inkypi/google_calendar_token.json`
+   - Print the token information
+
+3. Copy the access token to your `.env` file
+
+### Token File Location
+
+The plugin will look for credentials in this order:
+1. Environment variables in `.env` file
+2. Token file at `~/.inkypi/google_calendar_token.json`
+
 ## Usage
 
 The plugin will automatically:
-1. Authenticate with both Google Calendar and TickTick
-2. Fetch events and tasks for the current week
-3. Display them in a weekly calendar view
-4. Handle token refresh when needed
-
-### First-time Authentication
-
-On first run, the plugin will:
-1. Open your default web browser
-2. Prompt you to log in to Google Calendar and TickTick
-3. Request necessary permissions
-4. Save the authentication tokens for future use
+1. Use credentials from `.env` file if available
+2. Fall back to token file if environment variables are not set
+3. Fetch events and tasks for the current week
+4. Display them in a weekly calendar view
 
 ### Calendar Layout
 
@@ -88,11 +130,15 @@ On first run, the plugin will:
 
 ### Authentication Issues
 
-1. **Token Expired**: The plugin will automatically attempt to refresh expired tokens
-2. **Authentication Failed**: 
-   - Check your Client ID and Client Secret
-   - Ensure redirect URIs are correctly configured
-   - Delete the token files in `~/.inkypi/` and try again
+1. **Invalid Credentials**: 
+   - Check your Client ID and Client Secret in `.env`
+   - Verify your access token is valid
+   - Make sure all required environment variables are set
+
+2. **Token File Issues**:
+   - Check if token file exists at `~/.inkypi/google_calendar_token.json`
+   - Verify token file contains valid JSON data
+   - Delete token file if corrupted and run debug script again
 
 ### Display Issues
 
