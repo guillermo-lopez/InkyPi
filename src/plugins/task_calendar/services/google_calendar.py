@@ -30,6 +30,7 @@ class CalendarEvent:
         'holidays': 'green',
         'birthdays': 'orange',
         'partiful': 'green',
+        'work': 'yellow',
     }
     
     @property

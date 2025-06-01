@@ -51,7 +51,7 @@ class CalendarRenderer:
             day_name = date.strftime('%a')
             day_num = date.strftime('%d')
             
-            # Use yellow background for current day
+            # Use gray background for current day
             is_today = date.date() == today.date()
             header_color = '#666666' if is_today else '#f7f7f7'
             text_color = 'white' if is_today else 'black'
@@ -78,14 +78,36 @@ class CalendarRenderer:
         # Organize items by day
         items_by_day: List[List[Union[CalendarEvent, TickTickTask]]] = [[] for _ in range(7)]
         for item in items:
-            day_idx = calculate_day_index(item.start, week_start)
-            if 0 <= day_idx < 7:
-                items_by_day[day_idx].append(item)
+            # Handle multi-day events
+            current_date = item.start
+            while current_date <= item.end and current_date.date() <= (week_start + timedelta(days=6)).date():
+                day_idx = calculate_day_index(current_date, week_start)
+                if 0 <= day_idx < 7:
+                    items_by_day[day_idx].append(item)
+                current_date += timedelta(days=1)
 
         # Sort and draw items for each day
         for day_idx, day_items in enumerate(items_by_day):
-            day_items.sort(key=lambda x: x.start)
+            # Sort by all-day first, then by start time
+            day_items.sort(key=lambda x: (not x.is_all_day, x.start))
             self.draw_day_items(draw, day_idx, day_items, x_offset, day_width)
+
+    def calculate_item_height(self, item: Union[CalendarEvent, TickTickTask], base_height: int) -> int:
+        """Calculate the height of an item based on its duration."""
+        if item.is_all_day:
+            return base_height
+            
+        duration = item.end - item.start
+        duration_hours = duration.total_seconds() / 3600
+        
+        if duration_hours <= 3:
+            # For events under 3 hours, increase height for every 30 minutes
+            # Each 30-minute increment adds one base_height
+            thirty_min_blocks = int(duration_hours * 2)  # Convert hours to 30-min blocks
+            return base_height * (thirty_min_blocks + 1)  # +1 for minimum height
+        else:
+            # For longer events, use standard height
+            return base_height
 
     def draw_day_items(self, draw: ImageDraw.Draw, day_idx: int, 
                       day_items: List[Union[CalendarEvent, TickTickTask]], 
@@ -107,9 +129,25 @@ class CalendarRenderer:
             color = self.get_item_color(item)
             time_str = item.start.strftime('%-I:%M %p')
             title = f"{time_str} {item.title[:MAX_TIMED_TITLE_LENGTH]}"
-            item_height = calculate_item_height(item, TASK_HEIGHT)
+            item_height = self.calculate_item_height(item, TASK_HEIGHT)
             self.draw_item(draw, item, x, y, day_width, color, title, item_height)
             y += item_height + PADDING
+
+    def get_font_color(self, background_color: str) -> str:
+        """Determine the appropriate font color based on the background color.
+        
+        Args:
+            background_color: The hex color code of the background
+            
+        Returns:
+            'black' for light backgrounds, 'white' for dark backgrounds
+        """
+        # Colors that should use black font
+        light_colors = {
+            'yellow',
+        }
+        
+        return 'black' if background_color.lower() in light_colors else 'white'
 
     def draw_item(self, draw: ImageDraw.Draw, 
                  item: Union[CalendarEvent, TickTickTask], 
@@ -126,8 +164,10 @@ class CalendarRenderer:
                        x + day_width - TASK_PADDING, 
                        y + height], 
                       fill=color, outline='black')
+        
+        font_color = self.get_font_color(color)
         draw.text((x + PADDING, y + PADDING), 
-                 title, fill='white', font=self.task_font)
+                 title, fill=font_color, font=self.task_font)
 
     def get_item_color(self, item: Union[CalendarEvent, TickTickTask]) -> str:
         """Get the appropriate color for an item based on its source and status."""

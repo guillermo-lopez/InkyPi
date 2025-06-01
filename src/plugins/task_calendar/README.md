@@ -6,11 +6,31 @@ A unified calendar plugin for InkyPi that displays both Google Calendar events a
 
 - **Unified Calendar View**: Combines Google Calendar events and TickTick tasks in a single weekly view
 - **Color Coding**:
-  - Google Calendar events: Red
-  - TickTick tasks: Color-coded by priority (Normal: Black, Low: Blue, Medium: Orange, High: Pink)
+  - Google Calendar events: Color-coded by calendar type
+    - Primary: Red
+    - Events Available: Purple
+    - Holidays: Green
+    - Birthdays: Orange
+    - Partiful: Green
+    - Other Google: Blue
+  - TickTick tasks: Color-coded by priority
+    - Normal: Blue
+    - Low: Black
+    - Medium: Orange
+    - High: Pink
   - Completed tasks: Gray
 - **Time Display**: Shows events in 12-hour format (e.g., "9:30 AM")
-- **All-day Events**: Displays both all-day events and timed events
+- **Event Duration Visualization**:
+  - All-day events: Standard height
+  - Short events (< 3 hours): Height proportional to duration
+    - 30 minutes = 1x height
+    - 1 hour = 2x height
+    - 1.5 hours = 3x height
+    - 2 hours = 4x height
+    - 2.5 hours = 5x height
+    - 3 hours = 6x height
+  - Long events (≥ 3 hours): Standard height
+- **Multi-day Events**: Shows as separate boxes for each day the event spans
 - **Simple Authentication**: Uses environment variables or token file for authentication
 - **No OAuth Flow**: No need for browser-based authentication after initial setup
 
@@ -35,14 +55,15 @@ task_calendar/
 
 ### UI Components
 - **layout.py**: Handles calendar layout calculations, including:
-  - Week start date calculation
+  - Week start date calculation (Sunday to Saturday)
   - Day index computation
   - Item height calculations based on duration
   - Calendar dimensions and positioning
 
 - **renderer.py**: Manages all drawing operations:
   - Calendar structure (headers, grid lines)
-  - Event and task rendering
+  - Event and task rendering with variable heights
+  - Multi-day event handling
   - Font management
   - Timestamp display
 
@@ -54,7 +75,13 @@ task_calendar/
 
 ### Services
 - **google_calendar.py**: Handles Google Calendar API integration
+  - Supports multiple calendars
+  - Converts all times to EST
+  - Handles all-day and multi-day events
 - **ticktick.py**: Manages TickTick API integration
+  - Supports task priorities
+  - Handles completed tasks
+  - Converts all times to EST
 
 ## Setup
 
@@ -68,6 +95,7 @@ task_calendar/
    - requests
    - python-dotenv
    - Pillow
+   - pytz
 
 ### Add missing packages
 ```
@@ -77,6 +105,7 @@ source /usr/local/inkypi/venv_inkypi/bin/activate
 sudo /usr/local/inkypi/venv_inkypi/bin/pip install google-api-python-client
 sudo /usr/local/inkypi/venv_inkypi/bin/pip install google-auth-oauthlib
 sudo /usr/local/inkypi/venv_inkypi/bin/pip install google-auth-httplib2
+sudo /usr/local/inkypi/venv_inkypi/bin/pip install pytz
 ```
 ```
 deactivate
@@ -111,10 +140,15 @@ Create a `.env` file in your project root with the following variables:
 GOOGLE_CALENDAR_CLIENT_ID=your_google_client_id
 GOOGLE_CALENDAR_CLIENT_SECRET=your_google_client_secret
 GOOGLE_CALENDAR_ACCESS_TOKEN=your_google_access_token
+GOOGLE_CALENDAR_ID=your_primary_calendar_id
+GOOGLE_CALENDAR_ID_EVENTS_AVAILABLE=your_events_calendar_id
+GOOGLE_CALENDAR_ID_HOLIDAYS=your_holidays_calendar_id
+GOOGLE_CALENDAR_ID_BIRTHDAYS=your_birthdays_calendar_id
+GOOGLE_CALENDAR_ID_PARTIFUL=your_partiful_calendar_id
+GOOGLE_CALENDAR_ID_OTHER_GOOGLE=your_other_calendar_id
 
 # TickTick
-TICKTICK_CLIENT_ID=your_ticktick_client_id
-TICKTICK_CLIENT_SECRET=your_ticktick_client_secret
+TICKTICK_ACCESS_TOKEN=your_ticktick_access_token
 ```
 
 ### Getting Google Calendar Access Token
@@ -144,8 +178,8 @@ The plugin will look for credentials in this order:
 The plugin will automatically:
 1. Use credentials from `.env` file if available
 2. Fall back to token file if environment variables are not set
-3. Fetch events and tasks for the current week
-4. Display them in a weekly calendar view
+3. Fetch events and tasks for the current week (Sunday to Saturday)
+4. Display them in a weekly calendar view with proper timezone handling (EST)
 
 ### Calendar Layout
 
@@ -154,6 +188,8 @@ The plugin will automatically:
 - **Events**:
   - All-day events shown first
   - Timed events shown with start time
+  - Height varies based on duration for short events
+  - Multi-day events shown as separate boxes for each day
   - Color-coded by source and priority
   - Limited to 25 characters for all-day events and 20 characters for timed events
 
@@ -178,6 +214,14 @@ The plugin will automatically:
    - Check your Google Calendar and TickTick permissions
    - Verify that events are within the current week
    - Ensure events have valid start/end times
+   - Check timezone settings (should be EST)
+
+### Timezone Issues
+
+1. **Wrong Times**: 
+   - Verify that your device's timezone is set correctly
+   - Check that the events are being converted to EST
+   - Ensure the week boundaries are correct (Sunday to Saturday)
 
 ## Contributing
 
