@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 import requests
+import pytz
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,19 @@ class TickTickTask:
     completed: bool
     priority: int
     source: str = 'ticktick'
+    
+    # Priority colors for tasks
+    PRIORITY_COLORS = {
+        0: 'blue',   # Normal
+        1: 'black',  # Low
+        2: 'orange', # Medium
+        3: 'pink'    # High
+    }
+    
+    @property
+    def color(self) -> str:
+        """Get the color for this task based on its priority."""
+        return self.PRIORITY_COLORS.get(self.priority, 'blue')
 
 class TickTick:
     """A class to interact with the TickTick API and manage tasks."""
@@ -45,8 +59,15 @@ class TickTick:
         if not self._test_token(access_token):
             raise RuntimeError("Invalid access token.")
 
-        week_start = datetime.now() - timedelta(days=datetime.now().weekday())
+        # Calculate week start (Sunday) and end (Saturday) in EST
+        device_tz = pytz.timezone(device_config.get_config("timezone", "US/Eastern"))
+        now = datetime.now(device_tz)
+        # weekday() returns 0-6 where 0 is Monday, so we need to adjust for Sunday start
+        days_since_sunday = (now.weekday() + 1) % 7  # +1 to shift Monday=0 to Sunday=0
+        week_start = now - timedelta(days=days_since_sunday)
         week_end = week_start + timedelta(days=6)
+
+        logger.info(f"Fetching tasks from {week_start} to {week_end} (EST)")
 
         headers = {
             'Authorization': f'Bearer {access_token}',
@@ -73,6 +94,9 @@ class TickTick:
         
         calendar_tasks = self._organize_tasks_for_calendar(tasks, week_start)
         logger.info(f"Processed {len(calendar_tasks)} tasks for calendar display")
+        
+        for task in calendar_tasks:
+            logger.info(f"Task: {task.title} - Start: {task.start} - End: {task.end} - All Day: {task.is_all_day}")
         
         return calendar_tasks
 
@@ -157,9 +181,10 @@ class TickTick:
             start_dt = datetime.strptime(start_str, DATE_FORMAT)
             end_dt = datetime.strptime(end_str, DATE_FORMAT)
             
-            # Convert to local timezone
-            start_dt = start_dt.astimezone()
-            end_dt = end_dt.astimezone()
+            # Convert to EST
+            device_tz = pytz.timezone(device_config.get_config("timezone", "US/Eastern"))
+            start_dt = start_dt.astimezone(device_tz)
+            end_dt = end_dt.astimezone(device_tz)
             
             # Only include tasks that overlap with this week
             if end_dt.date() < week_start.date() or start_dt.date() > week_end.date():

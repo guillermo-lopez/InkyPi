@@ -2,20 +2,6 @@
 
 from typing import Dict
 
-# Priority colors for tasks
-PRIORITY_COLORS: Dict[int, str] = {
-    0: 'blue',   # Normal
-    1: 'black',    # Low
-    2: 'orange',  # Medium
-    3: 'pink'     # High
-}
-
-# Event source colors
-EVENT_COLORS: Dict[str, str] = {
-    'google': 'red',  # Google Calendar events
-    'ticktick': '#FF5722'  # TickTick orange
-}
-
 # Layout constants
 HEADER_HEIGHT: int = 60
 TASK_HEIGHT: int = 30

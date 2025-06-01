@@ -8,6 +8,7 @@ import json
 from google.auth.transport.requests import Request
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
+import pytz
 
 logger = logging.getLogger(__name__)
 
@@ -19,21 +20,25 @@ class CalendarEvent:
     end: datetime
     is_all_day: bool
     source: str = 'google'
-    color: str = 'blue'
     calendar_name: str = 'primary'
-
-class GoogleCalendar:
-    """Service class for interacting with Google Calendar API."""
     
     # Default colors for different calendars
     CALENDAR_COLORS = {
         'primary': 'red',
-        'work': 'blue',
-        'personal': 'green',
-        'family': 'purple',
-        'holidays': 'orange',
-        'birthdays': 'pink'
+        'other_google': 'blue',
+        'events_available': 'purple',
+        'holidays': 'green',
+        'birthdays': 'orange',
+        'partiful': 'green',
     }
+    
+    @property
+    def color(self) -> str:
+        """Get the color for this event based on its calendar."""
+        return self.CALENDAR_COLORS.get(self.calendar_name, 'blue')
+
+class GoogleCalendar:
+    """Service class for interacting with Google Calendar API."""
     
     def __init__(self):
         self.service = None
@@ -142,15 +147,16 @@ class GoogleCalendar:
         start_dt, is_all_day = self._parse_event_datetime(start)
         end_dt, _ = self._parse_event_datetime(end)
         
-        # Get color from event or use calendar's default color
-        color = event.get('colorId', self.CALENDAR_COLORS.get(calendar_name, 'blue'))
+        # Convert to EST
+        est = pytz.timezone('US/Eastern')
+        start_dt = start_dt.astimezone(est)
+        end_dt = end_dt.astimezone(est)
         
         return CalendarEvent(
             title=event['summary'],
             start=start_dt,
             end=end_dt,
             is_all_day=is_all_day,
-            color=color,
             calendar_name=calendar_name
         )
 
@@ -170,14 +176,20 @@ class GoogleCalendar:
         try:
             self._initialize_service()
             
-            # Get the current week's start and end
-            now = datetime.now(timezone.utc)
-            week_start = now - timedelta(days=now.weekday())
+            # Get the current week's start and end in EST
+            device_tz = pytz.timezone(device_config.get_config("timezone", "US/Eastern"))
+            now = datetime.now(device_tz)
+            # Calculate week start (Sunday) and end (Saturday)
+            # weekday() returns 0-6 where 0 is Monday, so we need to adjust for Sunday start
+            days_since_sunday = (now.weekday() + 1) % 7  # +1 to shift Monday=0 to Sunday=0
+            week_start = now - timedelta(days=days_since_sunday)
             week_end = week_start + timedelta(days=6)
             
-            # Format dates for Google Calendar API
-            time_min = week_start.isoformat()
-            time_max = week_end.isoformat()
+            # Format dates for Google Calendar API (convert to UTC for API)
+            time_min = week_start.astimezone(pytz.UTC).isoformat()
+            time_max = week_end.astimezone(pytz.UTC).isoformat()
+            
+            logger.info(f"Fetching events from {time_min} to {time_max} (EST: {week_start} to {week_end})")
             
             all_events = []
             
@@ -197,6 +209,8 @@ class GoogleCalendar:
                     all_events.extend(calendar_events)
                     
                     logger.info(f"Retrieved {len(calendar_events)} events from calendar: {calendar_name}")
+                    for event in calendar_events:
+                        logger.info(f"Event: {event.title} - Start: {event.start} - End: {event.end} - All Day: {event.is_all_day}")
                 except Exception as e:
                     logger.error(f"Error fetching events from calendar {calendar_name}: {e}")
                     continue

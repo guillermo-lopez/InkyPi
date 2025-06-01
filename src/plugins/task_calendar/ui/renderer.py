@@ -6,8 +6,8 @@ from typing import List, Dict, Any, Optional, Tuple, Union
 import logging
 
 from .styles import (
-    PRIORITY_COLORS, EVENT_COLORS, HEADER_HEIGHT, TASK_HEIGHT,
-    PADDING, TASK_PADDING, DEFAULT_FONT_SIZE, DEFAULT_TASK_FONT_SIZE,
+    HEADER_HEIGHT, TASK_HEIGHT, PADDING, TASK_PADDING,
+    DEFAULT_FONT_SIZE, DEFAULT_TASK_FONT_SIZE,
     TIMESTAMP_FONT_SIZE, MAX_TITLE_LENGTH, MAX_TIMED_TITLE_LENGTH
 )
 from .layout import calculate_week_start, calculate_day_index, calculate_item_height
@@ -132,8 +132,8 @@ class CalendarRenderer:
     def get_item_color(self, item: Union[CalendarEvent, TickTickTask]) -> str:
         """Get the appropriate color for an item based on its source and status."""
         if isinstance(item, TickTickTask):
-            return 'gray' if item.completed else PRIORITY_COLORS.get(item.priority, 'black')
-        return EVENT_COLORS['google']
+            return 'gray' if item.completed else item.color
+        return item.color
 
     def draw_timestamp(self, draw: ImageDraw.Draw, width: int, height: int) -> None:
         """Draw the current timestamp at the bottom right of the image."""
