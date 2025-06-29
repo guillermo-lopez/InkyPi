@@ -4,11 +4,13 @@ from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Tuple, Union
 import logging
+import textwrap
 
 from .styles import (
     HEADER_HEIGHT, TASK_HEIGHT, PADDING, TASK_PADDING,
     DEFAULT_FONT_SIZE, DEFAULT_TASK_FONT_SIZE,
-    TIMESTAMP_FONT_SIZE, MAX_TITLE_LENGTH, MAX_TIMED_TITLE_LENGTH
+    TIMESTAMP_FONT_SIZE, MAX_TITLE_LENGTH, MAX_TIMED_TITLE_LENGTH,
+    LINE_HEIGHT, FONT_PATH
 )
 from .layout import calculate_week_start, calculate_day_index, calculate_item_height
 from ..services.google_calendar import CalendarEvent
@@ -18,6 +20,8 @@ logger = logging.getLogger(__name__)
 
 class CalendarRenderer:
     """Handles the rendering of calendar elements."""
+
+    FONT_NAME = "DejaVuSans.ttf"  # No longer used, use FONT_PATH instead
 
     def __init__(self):
         """Initialize the calendar renderer."""
@@ -29,9 +33,9 @@ class CalendarRenderer:
     def _load_fonts(self) -> None:
         """Load fonts for calendar display with fallback to default."""
         try:
-            self.header_font = ImageFont.truetype("arial.ttf", DEFAULT_FONT_SIZE)
-            self.task_font = ImageFont.truetype("arial.ttf", DEFAULT_TASK_FONT_SIZE)
-            self.timestamp_font = ImageFont.truetype("arial.ttf", TIMESTAMP_FONT_SIZE)
+            self.header_font = ImageFont.truetype(FONT_PATH, DEFAULT_FONT_SIZE)
+            self.task_font = ImageFont.truetype(FONT_PATH, DEFAULT_TASK_FONT_SIZE)
+            self.timestamp_font = ImageFont.truetype(FONT_PATH, TIMESTAMP_FONT_SIZE)
         except Exception as e:
             logger.warning(f"Failed to load custom fonts: {e}. Using default fonts.")
             self.header_font = None
@@ -153,21 +157,41 @@ class CalendarRenderer:
                  item: Union[CalendarEvent, TickTickTask], 
                  x: int, y: int, day_width: int, color: str, 
                  title: Optional[str] = None, height: Optional[int] = None) -> None:
-        """Draw a single calendar item."""
+        """Draw a single calendar item with text wrapping."""
         if title is None:
             title = item.title[:MAX_TITLE_LENGTH]
             
         if height is None:
             height = TASK_HEIGHT
             
+        # Calculate available width for text
+        text_width = day_width - (2 * PADDING + 2 * TASK_PADDING)
+        
+        # Wrap text to fit available width
+        if self.task_font:
+            # Estimate characters per line based on font size
+            chars_per_line = int(text_width / (DEFAULT_TASK_FONT_SIZE * 0.6))  # Approximate character width
+            wrapped_text = textwrap.wrap(title, width=chars_per_line)
+        else:
+            # Fallback if font loading fails
+            wrapped_text = [title]
+            
+        # Calculate required height based on number of lines
+        required_height = max(height, len(wrapped_text) * LINE_HEIGHT)
+        
+        # Draw the background rectangle
         draw.rectangle([x + TASK_PADDING, y, 
                        x + day_width - TASK_PADDING, 
-                       y + height], 
+                       y + required_height], 
                       fill=color, outline='black')
         
+        # Draw wrapped text
         font_color = self.get_font_color(color)
-        draw.text((x + PADDING, y + PADDING), 
-                 title, fill=font_color, font=self.task_font)
+        current_y = y + PADDING
+        for line in wrapped_text:
+            draw.text((x + PADDING, current_y), 
+                     line, fill=font_color, font=self.task_font)
+            current_y += LINE_HEIGHT
 
     def get_item_color(self, item: Union[CalendarEvent, TickTickTask]) -> str:
         """Get the appropriate color for an item based on its source and status."""
@@ -177,7 +201,7 @@ class CalendarRenderer:
 
     def draw_timestamp(self, draw: ImageDraw.Draw, width: int, height: int) -> None:
         """Draw the current timestamp at the bottom right of the image."""
-        timestamp = datetime.now().strftime("%b %d %I:%M %p")
+        timestamp = datetime.now().strftime("%b %d - %I:%M %p")
         
         # Calculate text size to position it properly
         if self.timestamp_font:
@@ -187,7 +211,7 @@ class CalendarRenderer:
             text_width = len(timestamp) * 8
 
         # Position the timestamp at the bottom right
-        x = width - text_width - 30
+        x = width - text_width - 70
         y = height - 25
 
         # Draw the timestamp

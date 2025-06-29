@@ -92,7 +92,7 @@ class TickTick:
         tasks = data['tasks']
         logger.info(f"Retrieved {len(tasks)} tasks from TickTick API")
         
-        calendar_tasks = self._organize_tasks_for_calendar(tasks, week_start)
+        calendar_tasks = self._organize_tasks_for_calendar(tasks, week_start, device_config)
         logger.info(f"Processed {len(calendar_tasks)} tasks for calendar display")
         
         for task in calendar_tasks:
@@ -126,7 +126,8 @@ class TickTick:
     def _organize_tasks_for_calendar(
         self, 
         tasks: List[Dict[str, Any]], 
-        week_start: datetime
+        week_start: datetime,
+        device_config: Any
     ) -> List[TickTickTask]:
         """
         Organize tasks for calendar rendering, extracting start/end times and all-day status.
@@ -134,6 +135,7 @@ class TickTick:
         Args:
             tasks (List[Dict[str, Any]]): List of tasks from the API
             week_start (datetime): Start of the current week
+            device_config: Configuration object containing environment variables
             
         Returns:
             List[TickTickTask]: List of tasks with start/end times and other metadata
@@ -143,7 +145,7 @@ class TickTick:
         
         for task in tasks:
             try:
-                processed_task = self._process_single_task(task, week_start, week_end)
+                processed_task = self._process_single_task(task, week_start, week_end, device_config)
                 if processed_task:
                     calendar_tasks.append(processed_task)
             except Exception as e:
@@ -156,7 +158,8 @@ class TickTick:
         self, 
         task: Dict[str, Any], 
         week_start: datetime, 
-        week_end: datetime
+        week_end: datetime,
+        device_config: Any
     ) -> Optional[TickTickTask]:
         """
         Process a single task and convert it to calendar format.
@@ -165,6 +168,7 @@ class TickTick:
             task (Dict[str, Any]): The task to process
             week_start (datetime): Start of the current week
             week_end (datetime): End of the current week
+            device_config: Configuration object containing environment variables
             
         Returns:
             Optional[TickTickTask]: Processed task or None if task should be skipped

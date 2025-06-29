@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, Tuple, Union
 from ..services.google_calendar import CalendarEvent
 from ..services.ticktick import TickTickTask
+from .styles import MAX_TIMED_TITLE_LENGTH, LINE_HEIGHT
 
 def calculate_week_start() -> datetime:
     """Calculate the start of the current week (Sunday)."""
@@ -17,7 +18,7 @@ def calculate_day_index(date: datetime, week_start: datetime) -> int:
 
 def calculate_item_height(item: Union[CalendarEvent, TickTickTask], base_height: int) -> int:
     """
-    Calculate the height of an item based on its duration.
+    Calculate the height of an item based on its duration and text content.
     
     Args:
         item: Calendar item (either CalendarEvent or TickTickTask)
@@ -39,7 +40,18 @@ def calculate_item_height(item: Union[CalendarEvent, TickTickTask], base_height:
         
     # Round up to nearest 30 minutes, with a minimum of 30 minutes
     duration_blocks = max(1, (duration_minutes + 29) // 30)
-    return int(base_height * duration_blocks)
+    
+    # Calculate height based on duration
+    duration_height = int(base_height * duration_blocks)
+    
+    # Add extra height for text wrapping if needed
+    # Estimate number of lines based on title length
+    title_length = len(item.title)
+    if title_length > MAX_TIMED_TITLE_LENGTH:
+        extra_lines = (title_length - MAX_TIMED_TITLE_LENGTH) // 20  # Approximate characters per line
+        duration_height += extra_lines * LINE_HEIGHT
+    
+    return duration_height
 
 def calculate_calendar_dimensions(display_width: int, display_height: int, 
                                 width_ratio: float) -> Tuple[int, int, int, int]:
