@@ -4,11 +4,10 @@ from datetime import datetime, timedelta, timezone
 from google.oauth2.credentials import Credentials
 from dotenv import load_dotenv
 import os
-import json
-from google.auth.transport.requests import Request
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 import pytz
+from ..auth.google_auth import GoogleCalendarAuth
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +44,7 @@ class GoogleCalendar:
         self.service = None
         self._credentials: Optional[Credentials] = None
         self._calendar_ids: Dict[str, str] = {}
+        self._auth: Optional[GoogleCalendarAuth] = None
         self._load_calendar_ids()
 
     def _load_calendar_ids(self) -> None:
@@ -64,67 +64,38 @@ class GoogleCalendar:
         
         logger.info(f"Loaded {len(self._calendar_ids)} calendar IDs")
 
-    def _load_credentials_from_env(self) -> Optional[Credentials]:
-        """Load credentials from environment variables."""
+    def _initialize_auth(self) -> None:
+        """Initialize the Google Calendar authentication."""
+        if self._auth:
+            return
+            
         load_dotenv()
-        access_token = os.getenv('GOOGLE_CALENDAR_ACCESS_TOKEN')
         client_id = os.getenv('GOOGLE_CALENDAR_CLIENT_ID')
         client_secret = os.getenv('GOOGLE_CALENDAR_CLIENT_SECRET')
-        refresh_token = os.getenv('GOOGLE_CALENDAR_REFRESH_TOKEN')
-
-        if not all([access_token, client_id, client_secret]):
-            return None
-
-        credentials = Credentials(
-            token=access_token,
-            refresh_token=refresh_token,
-            token_uri="https://oauth2.googleapis.com/token",
-            client_id=client_id,
-            client_secret=client_secret,
-            scopes=['https://www.googleapis.com/auth/calendar.readonly']
-        )
-
-        if refresh_token:
-            try:
-                credentials.refresh(Request())
-                logger.info("Successfully refreshed access token")
-            except Exception as e:
-                logger.warning(f"Failed to refresh token: {e}")
-
-        return credentials
-
-    def _load_credentials_from_file(self) -> Optional[Credentials]:
-        """Load credentials from token file."""
-        token_file = os.path.expanduser("~/.inkypi/google_calendar_token.json")
-        if not os.path.exists(token_file):
-            return None
-
-        try:
-            with open(token_file, 'r') as f:
-                token_data = json.load(f)
-                return Credentials(
-                    token=token_data['token'],
-                    refresh_token=token_data.get('refresh_token'),
-                    token_uri=token_data['token_uri'],
-                    client_id=token_data['client_id'],
-                    client_secret=token_data['client_secret'],
-                    scopes=token_data['scopes']
-                )
-        except (json.JSONDecodeError, KeyError, IOError) as e:
-            logger.error(f"Error loading credentials from file: {e}")
-            return None
+        
+        if not client_id or not client_secret:
+            raise RuntimeError(
+                "GOOGLE_CALENDAR_CLIENT_ID and GOOGLE_CALENDAR_CLIENT_SECRET "
+                "must be set in .env file"
+            )
+        
+        self._auth = GoogleCalendarAuth(client_id, client_secret)
 
     def _initialize_service(self) -> None:
         """Initialize the Google Calendar service with credentials."""
         if self.service:
             return
 
-        self._credentials = self._load_credentials_from_env()
+        self._initialize_auth()
+        
+        # Get valid credentials (with automatic refresh if needed)
+        self._credentials = self._auth.get_valid_credentials()
         if not self._credentials:
-            self._credentials = self._load_credentials_from_file()
-
-        if not self._credentials:
-            raise RuntimeError("No valid Google Calendar credentials found in .env or token file")
+            raise RuntimeError(
+                "No valid Google Calendar credentials found. "
+                "Please run the authentication script to set up credentials:\n"
+                "python3 src/plugins/task_calendar/auth/google_auth.py"
+            )
 
         self.service = build('calendar', 'v3', credentials=self._credentials)
 
@@ -213,8 +184,15 @@ class GoogleCalendar:
                     for event in calendar_events:
                         logger.info(f"Event: {event.title} - Start: {event.start} - End: {event.end} - All Day: {event.is_all_day}")
                 except Exception as e:
-                    logger.error(f"Error fetching events from calendar {calendar_name}: {e}")
-                    continue
+                    error_msg = str(e)
+                    if "invalid_grant" in error_msg or "Token has been expired or revoked" in error_msg:
+                        logger.error(f"Authentication error for calendar {calendar_name}: {e}")
+                        logger.error("Please re-authenticate by running: python3 src/plugins/task_calendar/auth/google_auth.py")
+                        # Don't continue with other calendars if authentication is broken
+                        raise RuntimeError(f"Google Calendar authentication failed: {error_msg}")
+                    else:
+                        logger.error(f"Error fetching events from calendar {calendar_name}: {e}")
+                        continue
             
             return all_events
             

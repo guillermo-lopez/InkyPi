@@ -5,7 +5,6 @@ import json
 import webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
-from dotenv import load_dotenv
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
@@ -25,7 +24,14 @@ class GoogleCalendarAuth:
     def __init__(self, client_id: str, client_secret: str):
         self.client_id = client_id
         self.client_secret = client_secret
-        self.token_file = os.path.expanduser("~/.inkypi/google_calendar_token.json")
+        # Load token file path from environment variable or use default
+        token_file_path = os.getenv('GOOGLE_CALENDAR_TOKEN_FILE')
+        if token_file_path:
+            self.token_file = os.path.expanduser(token_file_path)
+        else:
+            self.token_file = os.path.expanduser("~/.inkypi/google_calendar_token.json")
+        
+        print(f"Using token file: {self.token_file}")
         self.client_config = self._build_client_config()
 
     def _build_client_config(self) -> dict:
@@ -83,44 +89,58 @@ class GoogleCalendarAuth:
             print(f"- {scope}")
         print("\nToken Expiry:", credentials.expiry)
         print("=" * 80)
-        print("\nNew Google Calendar access token saved to:", self.token_file)
-        print("\nAdd these to your .env file:")
-        print(f"GOOGLE_CALENDAR_ACCESS_TOKEN={credentials.token}")
-        print(f"GOOGLE_CALENDAR_CLIENT_ID={credentials.client_id}")
-        print(f"GOOGLE_CALENDAR_CLIENT_SECRET={credentials.client_secret}")
-        print(f"GOOGLE_CALENDAR_REFRESH_TOKEN={credentials.refresh_token}")
+        print(f"\nGoogle Calendar tokens saved to: {self.token_file}")
+        print("The plugin will automatically refresh tokens when needed.")
 
     def load_tokens(self) -> Credentials | None:
-        """Load OAuth2 credentials from file or environment variables."""
-        # Try to load from token file first
-        if os.path.exists(self.token_file):
-            try:
-                with open(self.token_file, 'r') as f:
-                    token_data = json.load(f)
-                    return Credentials(
-                        token=token_data['token'],
-                        refresh_token=token_data['refresh_token'],
-                        token_uri=token_data['token_uri'],
-                        client_id=token_data['client_id'],
-                        client_secret=token_data['client_secret'],
-                        scopes=token_data['scopes']
-                    )
-            except (json.JSONDecodeError, KeyError) as e:
-                print(f"Error loading token file: {e}")
-        
-        # Fallback to environment variable
-        load_dotenv()
-        access_token = os.getenv('GOOGLE_CALENDAR_ACCESS_TOKEN')
-        if access_token:
-            return Credentials(
-                token=access_token,
-                token_uri="https://oauth2.googleapis.com/token",
-                client_id=self.client_id,
-                client_secret=self.client_secret,
-                scopes=self.SCOPES
-            )
+        """Load OAuth2 credentials from JSON file only."""
+        if not os.path.exists(self.token_file):
+            return None
             
-        return None
+        try:
+            with open(self.token_file, 'r') as f:
+                token_data = json.load(f)
+                return Credentials(
+                    token=token_data['token'],
+                    refresh_token=token_data['refresh_token'],
+                    token_uri=token_data['token_uri'],
+                    client_id=token_data['client_id'],
+                    client_secret=token_data['client_secret'],
+                    scopes=token_data['scopes']
+                )
+        except (json.JSONDecodeError, KeyError) as e:
+            print(f"Error loading token file: {e}")
+            return None
+
+    def get_valid_credentials(self) -> Credentials | None:
+        """
+        Get valid credentials, automatically refreshing if expired.
+        
+        Returns:
+            Credentials object if valid, None if authentication is required
+        """
+        credentials = self.load_tokens()
+        if not credentials:
+            print("No Google Calendar token file found.")
+            print("Please run the authentication script to set up credentials:")
+            print("python3 src/plugins/task_calendar/auth/google_auth.py")
+            return None
+            
+        # Check if token is expired or will expire soon (within 5 minutes)
+        if credentials.expired or (credentials.expiry and 
+                                 (credentials.expiry.timestamp() - 300) < os.time()):
+            print("Google Calendar token expired, attempting to refresh...")
+            refreshed_credentials = self.refresh_access_token(credentials)
+            if refreshed_credentials:
+                print("Successfully refreshed Google Calendar access token!")
+                return refreshed_credentials
+            else:
+                print("Failed to refresh token - refresh token may be invalid or revoked.")
+                print("Please re-authenticate by running:")
+                print("python3 src/plugins/task_calendar/auth/google_auth.py")
+                return None
+        
+        return credentials
 
     def refresh_access_token(self, credentials: Credentials) -> Credentials | None:
         """Refresh the OAuth2 access token."""
@@ -198,6 +218,7 @@ class CallbackHandler(BaseHTTPRequestHandler):
 
 def load_credentials_from_env() -> tuple[str, str]:
     """Load Google Calendar credentials from environment variables."""
+    from dotenv import load_dotenv
     load_dotenv()
     
     client_id = os.getenv('GOOGLE_CALENDAR_CLIENT_ID')
@@ -243,14 +264,11 @@ def authenticate() -> GoogleCalendarAuth | None:
     
     auth = GoogleCalendarAuth(client_id, client_secret)
     
-    # Check for existing tokens
-    credentials = auth.load_tokens()
+    # Check for existing tokens and try to refresh if needed
+    credentials = auth.get_valid_credentials()
     if credentials:
-        # Try to refresh the token
-        refreshed_credentials = auth.refresh_access_token(credentials)
-        if refreshed_credentials:
-            print("Successfully refreshed Google Calendar access token!")
-            return auth
+        print("Successfully loaded valid Google Calendar credentials!")
+        return auth
     
     # Run OAuth flow if no valid tokens exist
     return run_oauth_flow(auth)

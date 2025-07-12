@@ -18,8 +18,8 @@ def main():
             logger.error("Failed to authenticate with Google Calendar")
             return
         
-        # Get credentials from auth
-        credentials = auth.load_tokens()
+        # Get valid credentials from auth (with automatic refresh if needed)
+        credentials = auth.get_valid_credentials()
         if not credentials:
             logger.error("No valid credentials found")
             return

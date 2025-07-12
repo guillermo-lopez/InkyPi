@@ -31,7 +31,7 @@ A unified calendar plugin for InkyPi that displays both Google Calendar events a
     - 3 hours = 6x height
   - Long events (≥ 3 hours): Standard height
 - **Multi-day Events**: Shows as separate boxes for each day the event spans
-- **Simple Authentication**: Uses environment variables or token file for authentication
+- **Simple Authentication**: Uses JSON token file with automatic refresh
 - **No OAuth Flow**: No need for browser-based authentication after initial setup
 
 ## Directory Structure
@@ -136,10 +136,10 @@ sudo systemctl restart inkypi.service
 Create a `.env` file in your project root with the following variables:
 
 ```env
-# Google Calendar
+# Google Calendar (Client credentials only - tokens are stored in JSON file)
 GOOGLE_CALENDAR_CLIENT_ID=your_google_client_id
 GOOGLE_CALENDAR_CLIENT_SECRET=your_google_client_secret
-GOOGLE_CALENDAR_ACCESS_TOKEN=your_google_access_token
+GOOGLE_CALENDAR_TOKEN_FILE=~/.inkypi/google_calendar_token.json
 GOOGLE_CALENDAR_ID=your_primary_calendar_id
 GOOGLE_CALENDAR_ID_EVENTS_AVAILABLE=your_events_calendar_id
 GOOGLE_CALENDAR_ID_HOLIDAYS=your_holidays_calendar_id
@@ -155,29 +155,52 @@ TICKTICK_ACCESS_TOKEN=your_ticktick_access_token
 
 To get your Google Calendar access token:
 
-1. Run the debug script once to get the token:
+1. Run the authentication script once to set up credentials:
 ```bash
-python3 src/plugins/task_calendar/debug_google_calendar.py
+python3 src/plugins/task_calendar/auth/google_auth.py
 ```
 
 2. The script will:
    - Open your browser for authentication
-   - Save the token to `~/.inkypi/google_calendar_token.json`
+   - Save the tokens to `~/.inkypi/google_calendar_token.json`
    - Print the token information
 
-3. Copy the access token to your `.env` file
+3. The plugin will automatically refresh tokens when they expire
+
+### Testing Authentication
+
+To test if your authentication is working correctly:
+
+```bash
+python3 src/plugins/task_calendar/test_auth.py
+```
+
+This script will check if your token file exists and if the credentials are valid.
+
+### Re-authentication
+
+If you see "Token has been expired or revoked" errors, you need to re-authenticate:
+
+```bash
+python3 src/plugins/task_calendar/auth/google_auth.py
+```
+
+This will automatically handle re-authentication and overwrite the old tokens.
 
 ### Token File Location
 
-The plugin will look for credentials in this order:
-1. Environment variables in `.env` file
-2. Token file at `~/.inkypi/google_calendar_token.json`
+The plugin stores all Google Calendar tokens in a JSON file. The default location is:
+- `~/.inkypi/google_calendar_token.json`
+
+You can customize the token file location by setting the `GOOGLE_CALENDAR_TOKEN_FILE` environment variable in your `.env` file.
+
+The plugin will automatically refresh expired tokens using the refresh token.
 
 ## Usage
 
 The plugin will automatically:
-1. Use credentials from `.env` file if available
-2. Fall back to token file if environment variables are not set
+1. Load Google Calendar credentials from the JSON token file
+2. Refresh expired tokens automatically using the refresh token
 3. Fetch events and tasks for the current week (Sunday to Saturday)
 4. Display them in a weekly calendar view with proper timezone handling (EST)
 
@@ -193,19 +216,41 @@ The plugin will automatically:
   - Color-coded by source and priority
   - Limited to 25 characters for all-day events and 20 characters for timed events
 
+## Common Commands
+1. Update Server Code and restart server
+```
+scp -r src/plugins/task_calendar inky-pi@inky-pi.local:InkyPi/src/plugins/ && ssh inky-pi@inky-pi.local "sudo systemctl restart inkypi.service"
+```
+2. View Server Logs
+```
+journalctl -u inkypi -n 100 -f
+```
+3. Service Restart
+```
+sudo systemctl restart inkypi.service
+```
+
 ## Troubleshooting
 
 ### Authentication Issues
 
 1. **Invalid Credentials**: 
    - Check your Client ID and Client Secret in `.env`
-   - Verify your access token is valid
+   - Verify the token file exists at `~/.inkypi/google_calendar_token.json`
    - Make sure all required environment variables are set
 
 2. **Token File Issues**:
    - Check if token file exists at `~/.inkypi/google_calendar_token.json`
    - Verify token file contains valid JSON data
-   - Delete token file if corrupted and run debug script again
+   - Delete token file if corrupted and run authentication script again
+
+3. **Token Refresh Issues**:
+   - The plugin automatically refreshes expired tokens
+   - If you see "Token has been expired or revoked" errors, run the authentication script:
+     ```bash
+     python3 src/plugins/task_calendar/auth/google_auth.py
+     ```
+   - Check that your Google Calendar app has the necessary permissions
 
 ### Display Issues
 
