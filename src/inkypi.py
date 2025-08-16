@@ -27,11 +27,20 @@ from blueprints.plugin import plugin_bp
 from blueprints.playlist import playlist_bp
 from jinja2 import ChoiceLoader, FileSystemLoader
 from plugins.plugin_registry import load_plugins
-
+import sentry_sdk
 
 logger = logging.getLogger(__name__)
 
 logger.info("Starting web server")
+
+# Initialize Sentry SDK before Flask app
+sentry_sdk.init(
+    dsn="https://41ce9ed9ce07b80f71fb589461469067@o4509775410495488.ingest.us.sentry.io/4509853553459200",
+    # Add data like request headers and IP for users,
+    # see https://docs.sentry.io/platforms/python/data-management/data-collected/ for more info
+    send_default_pii=True,
+)
+
 app = Flask(__name__)
 template_dirs = [
    os.path.join(os.path.dirname(__file__), "templates"),    # Default template folder
