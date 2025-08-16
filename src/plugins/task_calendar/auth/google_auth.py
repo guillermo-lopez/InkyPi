@@ -5,6 +5,7 @@ import json
 import webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
+from typing import Union, Optional, Tuple
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
@@ -92,7 +93,7 @@ class GoogleCalendarAuth:
         print(f"\nGoogle Calendar tokens saved to: {self.token_file}")
         print("The plugin will automatically refresh tokens when needed.")
 
-    def load_tokens(self) -> Credentials | None:
+    def load_tokens(self) -> Optional[Credentials]:
         """Load OAuth2 credentials from JSON file only."""
         if not os.path.exists(self.token_file):
             return None
@@ -112,7 +113,7 @@ class GoogleCalendarAuth:
             print(f"Error loading token file: {e}")
             return None
 
-    def get_valid_credentials(self) -> Credentials | None:
+    def get_valid_credentials(self) -> Optional[Credentials]:
         """
         Get valid credentials, automatically refreshing if expired.
         
@@ -142,7 +143,7 @@ class GoogleCalendarAuth:
         
         return credentials
 
-    def refresh_access_token(self, credentials: Credentials) -> Credentials | None:
+    def refresh_access_token(self, credentials: Credentials) -> Optional[Credentials]:
         """Refresh the OAuth2 access token."""
         if not credentials or not credentials.refresh_token:
             return None
@@ -155,7 +156,7 @@ class GoogleCalendarAuth:
             print(f"Error refreshing Google Calendar token: {e}")
             return None
 
-    def exchange_code_for_tokens(self, auth_code: str) -> Credentials | None:
+    def exchange_code_for_tokens(self, auth_code: str) -> Optional[Credentials]:
         """Exchange authorization code for OAuth2 tokens."""
         flow = InstalledAppFlow.from_client_config(
             self.client_config,
@@ -216,7 +217,7 @@ class CallbackHandler(BaseHTTPRequestHandler):
         pass
 
 
-def load_credentials_from_env() -> tuple[str, str]:
+def load_credentials_from_env() -> Tuple[str, str]:
     """Load Google Calendar credentials from environment variables."""
     from dotenv import load_dotenv
     load_dotenv()
@@ -233,7 +234,7 @@ def load_credentials_from_env() -> tuple[str, str]:
     return client_id, client_secret
 
 
-def run_oauth_flow(auth: GoogleCalendarAuth) -> GoogleCalendarAuth | None:
+def run_oauth_flow(auth: GoogleCalendarAuth) -> Optional[GoogleCalendarAuth]:
     """Run the OAuth2 authentication flow with local server."""
     server = HTTPServer(('localhost', 8000), CallbackHandler)
     server.auth_code = None
@@ -254,7 +255,7 @@ def run_oauth_flow(auth: GoogleCalendarAuth) -> GoogleCalendarAuth | None:
     return None
 
 
-def authenticate() -> GoogleCalendarAuth | None:
+def authenticate() -> Optional[GoogleCalendarAuth]:
     """Main authentication function."""
     try:
         client_id, client_secret = load_credentials_from_env()

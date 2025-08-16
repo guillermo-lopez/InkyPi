@@ -97,6 +97,13 @@ task_calendar/
    - Pillow
    - pytz
 
+### Autheticate
+```
+source /Users/glopez/projects/code/InkyPi/.venv/bin/activate
+```
+```
+python3 google_auth.py
+``` 
 ### Add missing packages
 ```
 source /usr/local/inkypi/venv_inkypi/bin/activate
