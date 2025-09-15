@@ -2,6 +2,7 @@
 
 import os
 import json
+import time
 import webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
@@ -129,7 +130,7 @@ class GoogleCalendarAuth:
             
         # Check if token is expired or will expire soon (within 5 minutes)
         if credentials.expired or (credentials.expiry and 
-                                 (credentials.expiry.timestamp() - 300) < os.time()):
+                                 (credentials.expiry.timestamp() - 300) < time.time()):
             print("Google Calendar token expired, attempting to refresh...")
             refreshed_credentials = self.refresh_access_token(credentials)
             if refreshed_credentials:
