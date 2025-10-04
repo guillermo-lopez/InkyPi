@@ -81,13 +81,13 @@ class GoogleCalendar:
         
         self._auth = GoogleCalendarAuth(client_id, client_secret)
 
-    def _initialize_service(self) -> None:
+    def _initialize_service(self, force_refresh: bool = False) -> None:
         """Initialize the Google Calendar service with credentials."""
-        if self.service:
+        if self.service and not force_refresh:
             return
 
         self._initialize_auth()
-        
+
         # Get valid credentials (with automatic refresh if needed)
         self._credentials = self._auth.get_valid_credentials()
         if not self._credentials:
@@ -187,9 +187,36 @@ class GoogleCalendar:
                     error_msg = str(e)
                     if "invalid_grant" in error_msg or "Token has been expired or revoked" in error_msg:
                         logger.error(f"Authentication error for calendar {calendar_name}: {e}")
-                        logger.error("Please re-authenticate by running: python3 src/plugins/task_calendar/auth/google_auth.py")
-                        # Don't continue with other calendars if authentication is broken
-                        raise RuntimeError(f"Google Calendar authentication failed: {error_msg}")
+                        logger.error("Token refresh failed. Invalidating cached service and retrying with fresh credentials...")
+
+                        # Invalidate cached service and credentials
+                        self.service = None
+                        self._credentials = None
+
+                        # Try to re-initialize with fresh credentials from disk
+                        try:
+                            self._initialize_service(force_refresh=True)
+
+                            # Retry the API call with fresh credentials
+                            events_result = self.service.events().list(
+                                calendarId=calendar_id,
+                                timeMin=time_min,
+                                timeMax=time_max,
+                                singleEvents=True,
+                                orderBy='startTime'
+                            ).execute()
+
+                            events = events_result.get('items', [])
+                            calendar_events = [self._format_event(event, calendar_name) for event in events]
+                            all_events.extend(calendar_events)
+
+                            logger.info(f"Successfully retrieved {len(calendar_events)} events after credential refresh")
+                            for event in calendar_events:
+                                logger.info(f"Event: {event.title} - Start: {event.start} - End: {event.end} - All Day: {event.is_all_day}")
+                        except Exception as retry_error:
+                            logger.error(f"Failed to fetch events even after credential refresh: {retry_error}")
+                            logger.error("Please re-authenticate by running: python3 src/plugins/task_calendar/auth/google_auth.py")
+                            raise RuntimeError(f"Google Calendar authentication failed: {error_msg}")
                     else:
                         logger.error(f"Error fetching events from calendar {calendar_name}: {e}")
                         continue
