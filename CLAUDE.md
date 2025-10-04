@@ -115,7 +115,53 @@ Plugins using `render_image()` should:
 
 The `task_calendar` plugin is a custom addition that integrates Google Calendar and TickTick:
 - Located in `src/plugins/task_calendar/`
-- Uses Google Calendar API with OAuth2 token refresh
+- Uses Google Calendar API with OAuth2 token refresh and automatic credential recovery
 - Displays weekly calendar view (Sunday-Saturday)
 - Color-codes events by calendar type and tasks by priority
 - See `src/plugins/task_calendar/README.md` for detailed documentation
+
+### Architecture
+```
+task_calendar/
+├── auth/
+│   └── google_auth.py         # OAuth2 authentication with automatic token refresh
+├── services/
+│   ├── google_calendar.py     # Google Calendar API integration
+│   └── ticktick.py           # TickTick API integration
+├── ui/
+│   ├── layout.py             # Calendar layout calculations
+│   ├── renderer.py           # Drawing operations
+│   └── styles.py             # Visual constants and colors
+└── task_calendar.py          # Main plugin class
+```
+
+### Authentication Flow
+1. **Initial Setup**: Run `python3 src/plugins/task_calendar/auth/google_auth.py` to authenticate
+2. **Token Storage**: Credentials stored in `~/.inkypi/google_calendar_token.json`
+3. **Auto Refresh**: Plugin automatically refreshes expired tokens
+4. **Error Recovery**: If token refresh fails, plugin invalidates cache and reloads credentials from disk
+
+### Key Features
+- **Credential Caching**: Service caches credentials but automatically invalidates on auth errors
+- **Retry Logic**: On authentication failure, service reloads fresh credentials and retries
+- **Multi-Calendar**: Supports multiple Google Calendars via environment variables
+- **Timezone Handling**: All events converted to EST for display
+- **Event Duration Visualization**: Variable height based on event duration for timed events
+
+### Common Tasks
+```bash
+# Re-authenticate (if tokens expire or are revoked)
+python3 src/plugins/task_calendar/auth/google_auth.py
+
+# Deploy changes to Pi
+scp -r src/plugins/task_calendar inky-pi@inky-pi.local:InkyPi/src/plugins/
+ssh inky-pi@inky-pi.local "sudo systemctl restart inkypi.service"
+
+# View logs
+ssh inky-pi@inky-pi.local "journalctl -u inkypi -n 100 -f"
+```
+
+### Troubleshooting
+- **"invalid_grant" errors**: Plugin will automatically try to reload credentials; if it persists, re-authenticate
+- **Token not refreshing**: Check that `~/.inkypi/google_calendar_token.json` exists and contains valid JSON
+- **Service restart needed**: Only required after code changes, not after re-authentication
