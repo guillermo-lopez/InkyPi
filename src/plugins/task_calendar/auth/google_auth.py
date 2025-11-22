@@ -4,6 +4,7 @@
 import os
 import json
 import time
+import logging
 import webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
@@ -12,6 +13,8 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 
 class GoogleCalendarAuth:
@@ -72,6 +75,9 @@ class GoogleCalendarAuth:
 
     def save_tokens(self, credentials: Credentials) -> None:
         """Save OAuth2 credentials to file."""
+        msg = f"Saving tokens to: {self.token_file}"
+        logger.info(msg) if logger.hasHandlers() else print(msg)
+
         os.makedirs(os.path.dirname(self.token_file), exist_ok=True)
 
         token_data = {
@@ -80,46 +86,142 @@ class GoogleCalendarAuth:
             'token_uri': credentials.token_uri,
             'client_id': credentials.client_id,
             'client_secret': credentials.client_secret,
-            'scopes': credentials.scopes
+            'scopes': credentials.scopes,
+            'expiry': credentials.expiry.isoformat() if credentials.expiry else None
         }
+
+        msg = "Writing token data to file..."
+        logger.info(msg) if logger.hasHandlers() else print(msg)
+        msg = f"  Will save access token: {bool(token_data['token'])}"
+        logger.info(msg) if logger.hasHandlers() else print(msg)
+        msg = f"  Will save refresh token: {bool(token_data['refresh_token'])}"
+        logger.info(msg) if logger.hasHandlers() else print(msg)
 
         with open(self.token_file, 'w') as f:
             json.dump(token_data, f, indent=2)
+
+        msg = f"✓ Tokens successfully written to: {self.token_file}"
+        logger.info(msg) if logger.hasHandlers() else print(msg)
+
+        # Verify the file was written correctly
+        import stat
+        file_stat = os.stat(self.token_file)
+        msg = f"File size: {file_stat.st_size} bytes"
+        logger.info(msg) if logger.hasHandlers() else print(msg)
+        msg = f"File permissions: {oct(stat.S_IMODE(file_stat.st_mode))}"
+        logger.info(msg) if logger.hasHandlers() else print(msg)
 
         self._print_token_info(credentials)
 
     def _print_token_info(self, credentials: Credentials) -> None:
         """Print token information for debugging."""
-        print("\nToken Information:")
-        print("=" * 80)
-        print(f"Access Token: {credentials.token[:50]}..." if credentials.token else "None")
-        print(f"Refresh Token: {'Present' if credentials.refresh_token else 'Missing'}")
-        print(f"Token Expiry: {credentials.expiry}")
-        print("\nScopes:")
+        import time
+        from datetime import datetime, timezone as tz
+
+        msg = "\n" + "=" * 80
+        logger.info(msg) if logger.hasHandlers() else print(msg)
+        msg = "TOKEN INFORMATION"
+        logger.info(msg) if logger.hasHandlers() else print(msg)
+        msg = "=" * 80
+        logger.info(msg) if logger.hasHandlers() else print(msg)
+
+        msg = f"Access Token: {credentials.token[:50]}..." if credentials.token else "Access Token: None"
+        logger.info(msg) if logger.hasHandlers() else print(msg)
+
+        if credentials.refresh_token:
+            msg = f"Refresh Token: Present ({credentials.refresh_token[:20]}...)"
+        else:
+            msg = "Refresh Token: MISSING"
+        logger.info(msg) if logger.hasHandlers() else print(msg)
+
+        msg = f"Token Expiry: {credentials.expiry}"
+        logger.info(msg) if logger.hasHandlers() else print(msg)
+
+        if credentials.expiry:
+            # Make now timezone-aware to match credentials.expiry
+            now = datetime.now(tz.utc) if credentials.expiry.tzinfo else datetime.now()
+            time_until_expiry = (credentials.expiry - now).total_seconds()
+            msg = f"Time until expiry: {time_until_expiry:.0f} seconds ({time_until_expiry/60:.1f} minutes)"
+            logger.info(msg) if logger.hasHandlers() else print(msg)
+            msg = f"Token expired: {credentials.expired}"
+            logger.info(msg) if logger.hasHandlers() else print(msg)
+
+        msg = "\nScopes:"
+        logger.info(msg) if logger.hasHandlers() else print(msg)
         for scope in credentials.scopes:
-            print(f"  - {scope}")
-        print("=" * 80)
-        print(f"\nTokens saved to: {self.token_file}")
-        print("The plugin will automatically refresh tokens when needed.\n")
+            msg = f"  - {scope}"
+            logger.info(msg) if logger.hasHandlers() else print(msg)
+
+        msg = "=" * 80
+        logger.info(msg) if logger.hasHandlers() else print(msg)
+        msg = f"Tokens saved to: {self.token_file}"
+        logger.info(msg) if logger.hasHandlers() else print(msg)
+        msg = "The plugin will automatically refresh tokens when needed."
+        logger.info(msg) if logger.hasHandlers() else print(msg)
+        msg = "=" * 80 + "\n"
+        logger.info(msg) if logger.hasHandlers() else print(msg)
 
     def load_tokens(self) -> Optional[Credentials]:
         """Load OAuth2 credentials from JSON file."""
         if not os.path.exists(self.token_file):
+            msg = f"Token file not found: {self.token_file}"
+            logger.warning(msg) if logger.hasHandlers() else print(msg)
             return None
 
         try:
+            msg = f"Loading tokens from: {self.token_file}"
+            logger.info(msg) if logger.hasHandlers() else print(msg)
+
             with open(self.token_file, 'r') as f:
                 token_data = json.load(f)
-                return Credentials(
+
+                # Log what we're loading (without sensitive data)
+                msg = f"Token file contents:"
+                logger.info(msg) if logger.hasHandlers() else print(msg)
+                msg = f"  Has access token: {bool(token_data.get('token'))}"
+                logger.info(msg) if logger.hasHandlers() else print(msg)
+                msg = f"  Has refresh token: {bool(token_data.get('refresh_token'))}"
+                logger.info(msg) if logger.hasHandlers() else print(msg)
+                if token_data.get('refresh_token'):
+                    msg = f"  Refresh token preview: {token_data['refresh_token'][:20]}..."
+                    logger.info(msg) if logger.hasHandlers() else print(msg)
+                msg = f"  Has expiry: {bool(token_data.get('expiry'))}"
+                logger.info(msg) if logger.hasHandlers() else print(msg)
+                if token_data.get('expiry'):
+                    msg = f"  Expiry: {token_data['expiry']}"
+                    logger.info(msg) if logger.hasHandlers() else print(msg)
+                msg = f"  Scopes: {len(token_data.get('scopes', []))}"
+                logger.info(msg) if logger.hasHandlers() else print(msg)
+
+                # Parse expiry if present
+                from datetime import datetime
+                expiry = None
+                if token_data.get('expiry'):
+                    try:
+                        expiry = datetime.fromisoformat(token_data['expiry'])
+                    except (ValueError, TypeError) as e:
+                        msg = f"  Warning: Could not parse expiry date: {e}"
+                        logger.warning(msg) if logger.hasHandlers() else print(msg)
+
+                credentials = Credentials(
                     token=token_data['token'],
                     refresh_token=token_data['refresh_token'],
                     token_uri=token_data['token_uri'],
                     client_id=token_data['client_id'],
                     client_secret=token_data['client_secret'],
-                    scopes=token_data['scopes']
+                    scopes=token_data['scopes'],
+                    expiry=expiry
                 )
+
+                msg = f"✓ Successfully loaded credentials from disk"
+                logger.info(msg) if logger.hasHandlers() else print(msg)
+                return credentials
+
         except (json.JSONDecodeError, KeyError) as e:
-            print(f"Error loading token file: {e}")
+            msg = f"✗ Error loading token file: {e}"
+            logger.error(msg) if logger.hasHandlers() else print(msg)
+            msg = f"  Error type: {type(e).__name__}"
+            logger.error(msg) if logger.hasHandlers() else print(msg)
             return None
 
     def get_valid_credentials(self) -> Optional[Credentials]:
@@ -129,24 +231,77 @@ class GoogleCalendarAuth:
         Returns:
             Credentials object if valid, None if authentication is required
         """
+        msg = "=" * 80
+        logger.info(msg) if logger.hasHandlers() else print(msg)
+        msg = "GETTING VALID CREDENTIALS"
+        logger.info(msg) if logger.hasHandlers() else print(msg)
+        msg = "=" * 80
+        logger.info(msg) if logger.hasHandlers() else print(msg)
+
         credentials = self.load_tokens()
         if not credentials:
-            print("No Google Calendar token file found.")
-            print("Run: python3 src/plugins/task_calendar/auth/google_auth.py")
+            msg = "=" * 80
+            logger.warning(msg) if logger.hasHandlers() else print(msg)
+            msg = "No Google Calendar token file found."
+            logger.warning(msg) if logger.hasHandlers() else print(msg)
+            msg = "Run: python3 src/plugins/task_calendar/auth/google_auth.py"
+            logger.warning(msg) if logger.hasHandlers() else print(msg)
+            msg = "=" * 80
+            logger.warning(msg) if logger.hasHandlers() else print(msg)
             return None
+
+        # Log current token status
+        from datetime import datetime, timezone as tz
+
+        msg = f"Current token state:"
+        logger.info(msg) if logger.hasHandlers() else print(msg)
+        msg = f"  Token expiry: {credentials.expiry}"
+        logger.info(msg) if logger.hasHandlers() else print(msg)
+
+        if credentials.expiry:
+            # Make now timezone-aware to match credentials.expiry
+            now = datetime.now(tz.utc) if credentials.expiry.tzinfo else datetime.now()
+            time_until_expiry = (credentials.expiry - now).total_seconds()
+            msg = f"  Time until expiry: {time_until_expiry:.0f} seconds ({time_until_expiry/60:.1f} minutes)"
+            logger.info(msg) if logger.hasHandlers() else print(msg)
+        else:
+            msg = f"  Time until expiry: Unknown (no expiry set)"
+            logger.info(msg) if logger.hasHandlers() else print(msg)
+
+        msg = f"  Token expired: {credentials.expired}"
+        logger.info(msg) if logger.hasHandlers() else print(msg)
+        msg = f"  Refresh token present: {bool(credentials.refresh_token)}"
+        logger.info(msg) if logger.hasHandlers() else print(msg)
 
         # Check if token needs refresh
         if self._needs_refresh(credentials):
-            print("Token expired or expiring soon, attempting refresh...")
+            msg = "⚠ Token expired or expiring soon (within 5 minutes), attempting refresh..."
+            logger.info(msg) if logger.hasHandlers() else print(msg)
+
             refreshed = self.refresh_access_token(credentials)
             if refreshed:
-                print("Successfully refreshed access token!")
+                msg = "=" * 80
+                logger.info(msg) if logger.hasHandlers() else print(msg)
+                msg = "✓ Successfully refreshed access token!"
+                logger.info(msg) if logger.hasHandlers() else print(msg)
+                msg = "=" * 80
+                logger.info(msg) if logger.hasHandlers() else print(msg)
                 return refreshed
 
-            print("Failed to refresh token - may be invalid or revoked.")
-            print("Run: python3 src/plugins/task_calendar/auth/google_auth.py")
+            msg = "=" * 80
+            logger.error(msg) if logger.hasHandlers() else print(msg)
+            msg = "✗ Failed to refresh token - may be invalid or revoked."
+            logger.error(msg) if logger.hasHandlers() else print(msg)
+            msg = "Run: python3 src/plugins/task_calendar/auth/google_auth.py"
+            logger.error(msg) if logger.hasHandlers() else print(msg)
+            msg = "=" * 80
+            logger.error(msg) if logger.hasHandlers() else print(msg)
             return None
 
+        msg = "✓ Token is still valid, no refresh needed"
+        logger.info(msg) if logger.hasHandlers() else print(msg)
+        msg = "=" * 80
+        logger.info(msg) if logger.hasHandlers() else print(msg)
         return credentials
 
     def _needs_refresh(self, credentials: Credentials) -> bool:
@@ -160,15 +315,111 @@ class GoogleCalendarAuth:
 
     def refresh_access_token(self, credentials: Credentials) -> Optional[Credentials]:
         """Refresh the OAuth2 access token."""
+        from datetime import datetime, timezone as tz
+
         if not credentials or not credentials.refresh_token:
+            msg = "=" * 80
+            logger.error(msg) if logger.hasHandlers() else print(msg)
+            msg = "CANNOT REFRESH: Missing credentials or refresh token"
+            logger.error(msg) if logger.hasHandlers() else print(msg)
+            msg = f"  Has credentials: {bool(credentials)}"
+            logger.error(msg) if logger.hasHandlers() else print(msg)
+            msg = f"  Has refresh token: {bool(credentials.refresh_token) if credentials else False}"
+            logger.error(msg) if logger.hasHandlers() else print(msg)
+            msg = "=" * 80
+            logger.error(msg) if logger.hasHandlers() else print(msg)
             return None
 
         try:
+            msg = "=" * 80
+            logger.info(msg) if logger.hasHandlers() else print(msg)
+            msg = "REFRESHING ACCESS TOKEN"
+            logger.info(msg) if logger.hasHandlers() else print(msg)
+            msg = "=" * 80
+            logger.info(msg) if logger.hasHandlers() else print(msg)
+
+            # Log state BEFORE refresh
+            msg = "Token state BEFORE refresh:"
+            logger.info(msg) if logger.hasHandlers() else print(msg)
+            msg = f"  Access token: {credentials.token[:50]}..." if credentials.token else "  Access token: None"
+            logger.info(msg) if logger.hasHandlers() else print(msg)
+            msg = f"  Refresh token: {credentials.refresh_token[:20]}..." if credentials.refresh_token else "  Refresh token: None"
+            logger.info(msg) if logger.hasHandlers() else print(msg)
+            msg = f"  Token expiry: {credentials.expiry}"
+            logger.info(msg) if logger.hasHandlers() else print(msg)
+
+            if credentials.expiry:
+                # Make now timezone-aware to match credentials.expiry
+                now = datetime.now(tz.utc) if credentials.expiry.tzinfo else datetime.now()
+                time_until_expiry = (credentials.expiry - now).total_seconds()
+                msg = f"  Time until expiry: {time_until_expiry:.0f} seconds ({time_until_expiry/60:.1f} minutes)"
+                logger.info(msg) if logger.hasHandlers() else print(msg)
+                msg = f"  Token expired: {credentials.expired}"
+                logger.info(msg) if logger.hasHandlers() else print(msg)
+
+            msg = "\nCalling Google token refresh API..."
+            logger.info(msg) if logger.hasHandlers() else print(msg)
+
             credentials.refresh(Request())
+
+            msg = "\n✓ Token refresh API call successful!"
+            logger.info(msg) if logger.hasHandlers() else print(msg)
+
+            # Log state AFTER refresh
+            msg = "\nToken state AFTER refresh:"
+            logger.info(msg) if logger.hasHandlers() else print(msg)
+            msg = f"  Access token: {credentials.token[:50]}..." if credentials.token else "  Access token: None"
+            logger.info(msg) if logger.hasHandlers() else print(msg)
+            msg = f"  Refresh token: {credentials.refresh_token[:20]}..." if credentials.refresh_token else "  Refresh token: MISSING"
+            logger.info(msg) if logger.hasHandlers() else print(msg)
+            msg = f"  Token expiry: {credentials.expiry}"
+            logger.info(msg) if logger.hasHandlers() else print(msg)
+
+            if credentials.expiry:
+                # Make now timezone-aware to match credentials.expiry
+                now = datetime.now(tz.utc) if credentials.expiry.tzinfo else datetime.now()
+                time_until_expiry = (credentials.expiry - now).total_seconds()
+                msg = f"  Time until expiry: {time_until_expiry:.0f} seconds ({time_until_expiry/60:.1f} minutes)"
+                logger.info(msg) if logger.hasHandlers() else print(msg)
+                msg = f"  Token expired: {credentials.expired}"
+                logger.info(msg) if logger.hasHandlers() else print(msg)
+
+            msg = "\nSaving refreshed tokens to disk..."
+            logger.info(msg) if logger.hasHandlers() else print(msg)
+
             self.save_tokens(credentials)
             return credentials
+
         except Exception as e:
-            print(f"Error refreshing token: {e}")
+            msg = "=" * 80
+            logger.error(msg) if logger.hasHandlers() else print(msg)
+            msg = "✗ ERROR REFRESHING TOKEN"
+            logger.error(msg) if logger.hasHandlers() else print(msg)
+            msg = "=" * 80
+            logger.error(msg) if logger.hasHandlers() else print(msg)
+            msg = f"Error: {e}"
+            logger.error(msg) if logger.hasHandlers() else print(msg)
+            msg = f"Error type: {type(e).__name__}"
+            logger.error(msg) if logger.hasHandlers() else print(msg)
+
+            # Check for specific error types
+            error_msg = str(e)
+            if "invalid_grant" in error_msg:
+                msg = "\nThis is an 'invalid_grant' error - the refresh token is invalid or revoked."
+                logger.error(msg) if logger.hasHandlers() else print(msg)
+                msg = "Common causes:"
+                logger.error(msg) if logger.hasHandlers() else print(msg)
+                msg = "  1. Token has been revoked at https://myaccount.google.com/permissions"
+                logger.error(msg) if logger.hasHandlers() else print(msg)
+                msg = "  2. Token has expired (6 months for unverified apps)"
+                logger.error(msg) if logger.hasHandlers() else print(msg)
+                msg = "  3. User changed password"
+                logger.error(msg) if logger.hasHandlers() else print(msg)
+                msg = "  4. OAuth consent screen settings changed"
+                logger.error(msg) if logger.hasHandlers() else print(msg)
+
+            msg = "=" * 80
+            logger.error(msg) if logger.hasHandlers() else print(msg)
             return None
 
     def exchange_code_for_tokens(self, auth_code: str) -> Optional[Credentials]:

@@ -70,6 +70,34 @@ class GoogleCalendar:
 
         logger.info(f"Loaded {len(self._calendar_ids)} calendar IDs")
 
+    def _log_token_state(self, context: str) -> None:
+        """
+        Log detailed token state for debugging authentication issues.
+
+        Args:
+            context: Description of when this logging is happening
+        """
+        if not self._credentials:
+            logger.warning(f"[{context}] No credentials available")
+            return
+
+        import time
+        from datetime import datetime, timezone
+
+        logger.info(f"[{context}] TOKEN STATE:")
+        logger.info(f"  Access Token: {self._credentials.token[:50]}..." if self._credentials.token else "  Access Token: None")
+        logger.info(f"  Refresh Token: {'Present (' + self._credentials.refresh_token[:20] + '...)' if self._credentials.refresh_token else 'MISSING'}")
+        logger.info(f"  Token Expiry: {self._credentials.expiry}")
+
+        if self._credentials.expiry:
+            # Make now timezone-aware to match credentials.expiry
+            now = datetime.now(timezone.utc) if self._credentials.expiry.tzinfo else datetime.now()
+            time_until_expiry = (self._credentials.expiry - now).total_seconds()
+            logger.info(f"  Time until expiry: {time_until_expiry:.0f} seconds ({time_until_expiry/60:.1f} minutes)")
+            logger.info(f"  Token expired: {self._credentials.expired}")
+
+        logger.info(f"  Scopes: {', '.join(self._credentials.scopes) if self._credentials.scopes else 'None'}")
+
     def _initialize_auth(self) -> None:
         """Initialize the Google Calendar authentication."""
         if self._auth:
@@ -97,6 +125,11 @@ class GoogleCalendar:
         if self.service and not force_refresh:
             return
 
+        logger.info("=" * 80)
+        logger.info("INITIALIZING GOOGLE CALENDAR SERVICE")
+        logger.info("=" * 80)
+        logger.info(f"Force refresh: {force_refresh}")
+
         self._initialize_auth()
 
         # Get valid credentials (with automatic refresh if needed)
@@ -107,7 +140,34 @@ class GoogleCalendar:
                 "Run: python3 src/plugins/task_calendar/auth/google_auth.py"
             )
 
+        self._log_token_state("CREDENTIALS LOADED")
+
+        # Set up a callback to save tokens after Google library auto-refreshes
+        original_refresh = self._credentials.refresh
+
+        def refresh_and_save(request):
+            """Wrapper that saves tokens after refresh."""
+            logger.info("=" * 80)
+            logger.info("GOOGLE LIBRARY AUTO-REFRESHING TOKEN")
+            logger.info("=" * 80)
+            self._log_token_state("BEFORE AUTO-REFRESH")
+
+            # Call the original refresh method
+            original_refresh(request)
+
+            self._log_token_state("AFTER AUTO-REFRESH")
+
+            # Save the refreshed tokens to disk
+            self._auth.save_tokens(self._credentials)
+            logger.info("✓ Refreshed tokens saved to disk")
+            logger.info("=" * 80)
+
+        # Replace the refresh method with our wrapper
+        self._credentials.refresh = refresh_and_save
+
         self.service = build('calendar', 'v3', credentials=self._credentials)
+        logger.info("✓ Google Calendar service initialized successfully")
+        logger.info("=" * 80)
 
     def _parse_event_datetime(self, dt_str: str) -> tuple[datetime, bool]:
         """
@@ -169,6 +229,11 @@ class GoogleCalendar:
         Returns:
             List of CalendarEvent objects
         """
+        logger.info("=" * 80)
+        logger.info(f"FETCHING EVENTS FROM CALENDAR: {calendar_name}")
+        logger.info("=" * 80)
+        self._log_token_state(f"BEFORE API CALL [{calendar_name}]")
+
         events_result = self.service.events().list(
             calendarId=calendar_id,
             timeMin=time_min,
@@ -177,15 +242,19 @@ class GoogleCalendar:
             orderBy='startTime'
         ).execute()
 
+        logger.info(f"✓ API call successful for calendar: {calendar_name}")
+        self._log_token_state(f"AFTER API CALL [{calendar_name}]")
+
         events = events_result.get('items', [])
         calendar_events = [self._format_event(event, calendar_name) for event in events]
 
         logger.info(f"Retrieved {len(calendar_events)} events from calendar: {calendar_name}")
         for event in calendar_events:
             logger.info(
-                f"Event: {event.title} - Start: {event.start} - "
+                f"  Event: {event.title} - Start: {event.start} - "
                 f"End: {event.end} - All Day: {event.is_all_day}"
             )
+        logger.info("=" * 80)
 
         return calendar_events
 
@@ -213,8 +282,36 @@ class GoogleCalendar:
         Raises:
             RuntimeError: If retry also fails
         """
-        logger.error(f"Authentication error for calendar {calendar_name}: {error}")
-        logger.error("Token refresh failed. Invalidating cached credentials and retrying...")
+        error_msg = str(error)
+        logger.error("=" * 80)
+        logger.error(f"AUTHENTICATION ERROR FOR CALENDAR: {calendar_name}")
+        logger.error("=" * 80)
+        logger.error(f"Error: {error}")
+        logger.error(f"Error type: {type(error).__name__}")
+        self._log_token_state("AT TIME OF AUTH ERROR")
+
+        # Check if this is a refresh token error (cannot be automatically fixed)
+        if "invalid_grant" in error_msg:
+            logger.error("=" * 80)
+            logger.error("REFRESH TOKEN IS INVALID OR EXPIRED")
+            logger.error("=" * 80)
+            logger.error("This cannot be fixed automatically. You must re-authenticate.")
+            logger.error("")
+            logger.error("On your development machine, run:")
+            logger.error("  python3 src/plugins/task_calendar/auth/google_auth.py")
+            logger.error("")
+            logger.error("Then deploy the new token to your Pi:")
+            logger.error("  scp ~/.inkypi/google_calendar_token.json inky-pi@inky-pi.local:~/.inkypi/")
+            logger.error("")
+            logger.error("The plugin will automatically pick up the new token on next refresh.")
+            logger.error("=" * 80)
+            raise RuntimeError(
+                "Google Calendar refresh token is invalid or expired. "
+                "Re-authentication required. See logs for instructions."
+            )
+
+        # For other auth errors, try to reload credentials from disk
+        logger.warning("Attempting to reload credentials from disk and retry...")
 
         # Invalidate cached credentials
         self.service = None
@@ -222,22 +319,30 @@ class GoogleCalendar:
 
         try:
             # Re-initialize with fresh credentials from disk
+            logger.info("Re-initializing service with fresh credentials...")
             self._initialize_service(force_refresh=True)
 
             # Retry the API call
+            logger.info("Retrying API call...")
             calendar_events = self._fetch_calendar_events(
                 calendar_id, calendar_name, time_min, time_max
             )
 
-            logger.info(
-                f"Successfully retrieved {len(calendar_events)} events "
-                f"after credential refresh"
-            )
+            logger.info("=" * 80)
+            logger.info(f"✓ RECOVERY SUCCESSFUL: Retrieved {len(calendar_events)} events after credential refresh")
+            logger.info("=" * 80)
             return calendar_events
 
         except Exception as retry_error:
+            logger.error("=" * 80)
+            logger.error("RECOVERY FAILED")
+            logger.error("=" * 80)
             logger.error(f"Failed to fetch events after credential refresh: {retry_error}")
-            logger.error("Run: python3 src/plugins/task_calendar/auth/google_auth.py")
+            logger.error(f"Retry error type: {type(retry_error).__name__}")
+            logger.error("")
+            logger.error("Re-authentication required. Run:")
+            logger.error("  python3 src/plugins/task_calendar/auth/google_auth.py")
+            logger.error("=" * 80)
             raise RuntimeError(f"Google Calendar authentication failed: {str(error)}")
 
     def get_events(self, device_config: Any) -> List[CalendarEvent]:
@@ -254,6 +359,11 @@ class GoogleCalendar:
             RuntimeError: If API call fails or credentials are invalid
         """
         try:
+            logger.info("")
+            logger.info("=" * 80)
+            logger.info("STARTING GOOGLE CALENDAR EVENT FETCH")
+            logger.info("=" * 80)
+
             self._initialize_service()
 
             # Get current week boundaries (Sunday to Saturday) in device timezone
@@ -273,6 +383,7 @@ class GoogleCalendar:
                 f"Fetching events from {time_min} to {time_max} "
                 f"(EST: {week_start} to {week_end})"
             )
+            logger.info(f"Configured calendars: {list(self._calendar_ids.keys())}")
 
             all_events = []
 
@@ -298,8 +409,19 @@ class GoogleCalendar:
                         logger.error(f"Error fetching events from calendar {calendar_name}: {e}")
                         continue
 
+            logger.info("=" * 80)
+            logger.info(f"✓ FETCH COMPLETE: Retrieved {len(all_events)} total events from {len(self._calendar_ids)} calendars")
+            self._log_token_state("FINAL TOKEN STATE")
+            logger.info("=" * 80)
+            logger.info("")
+
             return all_events
 
         except Exception as e:
-            logger.error(f"Error fetching Google Calendar events: {e}")
+            logger.error("=" * 80)
+            logger.error("FATAL ERROR FETCHING GOOGLE CALENDAR EVENTS")
+            logger.error("=" * 80)
+            logger.error(f"Error: {e}")
+            logger.error(f"Error type: {type(e).__name__}")
+            logger.error("=" * 80)
             raise RuntimeError(f"Failed to fetch Google Calendar events: {str(e)}")

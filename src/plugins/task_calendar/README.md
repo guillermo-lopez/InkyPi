@@ -174,6 +174,26 @@ python3 src/plugins/task_calendar/auth/google_auth.py
 
 3. The plugin will automatically refresh tokens when they expire
 
+#### How Token Refresh Works
+
+The plugin uses a sophisticated token refresh mechanism to maintain long-term operation:
+
+1. **Access Tokens**: Expire after ~1 hour
+2. **Refresh Tokens**: Used to obtain new access tokens without re-authentication
+3. **Automatic Refresh**: Google's library automatically refreshes access tokens during API calls
+4. **Token Persistence**: The plugin intercepts all auto-refresh operations and saves updated tokens to disk
+
+**What This Means:**
+- Once authenticated, the plugin should work indefinitely without manual re-authentication
+- Every ~50-55 minutes, you'll see log messages showing token refresh:
+  ```
+  Google library auto-refreshing token...
+  ✓ Auto-refresh successful!
+  ✓ Refreshed tokens saved to disk
+  ```
+- Refresh tokens themselves expire after several months of inactivity
+- Only when the refresh token expires will manual re-authentication be required
+
 ### Testing Authentication
 
 To test if your authentication is working correctly:
@@ -186,13 +206,26 @@ This script will check if your token file exists and if the credentials are vali
 
 ### Re-authentication
 
-If you see "Token has been expired or revoked" errors, you need to re-authenticate:
+Re-authentication is rarely needed thanks to automatic token refresh. You'll only need to re-authenticate if:
+
+1. **Refresh Token Expired**: The refresh token itself has expired (after several months of inactivity)
+2. **Token Revoked**: You manually revoked the app's access in Google Account settings
+3. **Invalid Grant Error**: You see persistent `invalid_grant` errors in the logs
+
+To re-authenticate:
 
 ```bash
 python3 src/plugins/task_calendar/auth/google_auth.py
 ```
 
 This will automatically handle re-authentication and overwrite the old tokens.
+
+**On Raspberry Pi:**
+After re-authenticating on your development machine, deploy the new token file:
+```bash
+scp ~/.inkypi/google_calendar_token.json inky-pi@inky-pi.local:~/.inkypi/
+```
+The plugin will automatically pick up the new token on the next refresh (no service restart needed).
 
 ### Token File Location
 
@@ -252,10 +285,13 @@ sudo systemctl restart inkypi.service
    - Delete token file if corrupted and run authentication script again
 
 3. **Token Refresh Issues**:
-   - The plugin automatically refreshes expired tokens
-   - If you see "Token has been expired or revoked" errors, run the authentication script:
+   - The plugin automatically refreshes expired access tokens every ~50-55 minutes
+   - You should see refresh log messages in the service logs (`journalctl -u inkypi -f`)
+   - If you see persistent `invalid_grant` errors, the refresh token has expired and you need to re-authenticate:
      ```bash
      python3 src/plugins/task_calendar/auth/google_auth.py
+     # Then deploy to Pi:
+     scp ~/.inkypi/google_calendar_token.json inky-pi@inky-pi.local:~/.inkypi/
      ```
    - Check that your Google Calendar app has the necessary permissions
 
