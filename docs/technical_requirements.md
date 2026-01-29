@@ -434,6 +434,91 @@ The ESP32 firmware is a separate project but should:
 - Support deep sleep between updates for power efficiency
 - Report display resolution and color mode to server on registration
 
+### 7.5 Hardware Wiring Reference
+
+#### Pimoroni Inky Impression Pinout (on Raspberry Pi)
+
+The Inky Impression uses the UC8159 driver chip. On the Raspberry Pi 40-pin header:
+
+| Signal | BCM GPIO | Pi Physical Pin | Description |
+|--------|----------|-----------------|-------------|
+| MOSI | GPIO 10 | Pin 19 | SPI data out |
+| SCLK | GPIO 11 | Pin 23 | SPI clock |
+| CS | GPIO 8 | Pin 24 | Chip select |
+| DC | GPIO 25 | Pin 22 | Data/Command |
+| RST | GPIO 17 | Pin 11 | Reset |
+| BUSY | GPIO 24 | Pin 18 | Busy signal (input) |
+| 3.3V | - | Pin 1 or 17 | Power |
+| GND | - | Pin 6, 9, 14, etc. | Ground |
+
+#### Wiring to DFRobot FireBeetle 2 ESP32
+
+When connecting an Inky Impression to a FireBeetle 2 ESP32 board:
+
+| Inky Signal | Inky Pi GPIO | → | ESP32 Pin | Notes |
+|-------------|--------------|---|-----------|-------|
+| **SCLK** | GPIO 11 | → | **SCK** | SPI Clock |
+| **MOSI** | GPIO 10 | → | **MO** | SPI Data |
+| **CS** | GPIO 8 | → | **D5** | Chip Select (any GPIO) |
+| **DC** | GPIO 25 | → | **D6** | Data/Command (any GPIO) |
+| **RST** | GPIO 17 | → | **D7** | Reset (any GPIO) |
+| **BUSY** | GPIO 24 | → | **D9** | Busy input (any GPIO) |
+| **3.3V** | Pin 1 | → | **3V3** | Power |
+| **GND** | Pin 6 | → | **GND** | Ground |
+
+#### FireBeetle 2 ESP32 Board Layout
+
+```
+         FireBeetle 2 (left side, top to bottom)
+         ┌─────────────────┐
+    GND ─┤                 │
+    SCK ─┤ ← SCLK (clock)  │
+     MO ─┤ ← MOSI (data)   │
+     MI ─┤ (unused)        │
+    SCL ─┤                 │
+    SDA ─┤                 │
+     D9 ─┤ ← BUSY          │
+     D7 ─┤ ← RST           │
+     D6 ─┤ ← DC            │
+     D5 ─┤ ← CS            │
+     D3 ─┤                 │
+     D2 ─┤                 │
+     TX ─┤                 │
+     RX ─┤                 │
+         └─────────────────┘
+```
+
+#### ESP32 Arduino Pin Definitions
+
+```cpp
+// Pin definitions for GxEPD2 library with FireBeetle 2
+#define EPD_CS    D5   // Chip select
+#define EPD_DC    D6   // Data/Command
+#define EPD_RST   D7   // Reset
+#define EPD_BUSY  D9   // Busy
+
+// SPI uses hardware pins:
+// SCK  = SCK pin (hardware SPI clock)
+// MOSI = MO pin  (hardware SPI data)
+```
+
+#### Hardware Notes
+
+1. **Voltage levels**: Both Inky Impression and ESP32 operate at 3.3V logic — no level shifting required.
+
+2. **Driver chip**: Inky Impression uses the **UC8159** 7-color e-paper controller. Use the **GxEPD2** library which supports this chip.
+
+3. **SPI speed**: The Pimoroni Inky library runs SPI at **4 MHz** (`max_speed_hz = 4000000`).
+
+4. **No EEPROM access**: The Inky HAT has an I2C EEPROM for auto-detection on Pi. The ESP32 won't use this — manually configure display parameters:
+   - 5.7" Inky Impression: 600×448 pixels
+   - 7.3" Inky Impression: 800×480 pixels
+
+5. **Physical connection**: The Inky Impression has a 40-pin HAT connector. Options:
+   - Use jumper wires from HAT header to ESP32
+   - Create a custom adapter board
+   - Use a breakout that exposes the SPI pins
+
 ---
 
 ## 8. Web UI Requirements
