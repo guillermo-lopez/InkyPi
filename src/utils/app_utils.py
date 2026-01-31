@@ -119,8 +119,15 @@ def generate_startup_image(dimensions=(800,480)):
 
     return image
 
+def parse_form(request_form):
+    request_dict = request_form.to_dict()
+    for key in request_form.keys():
+        if key.endswith('[]'):
+            request_dict[key] = request_form.getlist(key)
+    return request_dict
+
 def handle_request_files(request_files, form_data={}):
-    allowed_file_extensions = {'pdf', 'png', 'jpg', 'jpeg', 'gif'}
+    allowed_file_extensions = {'pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp'}
     file_location_map = {}
     # handle existing file locations being provided as part of the form data
     for key in set(request_files.keys()):
@@ -151,6 +158,7 @@ def handle_request_files(request_files, form_data={}):
                     img.save(file_path)
             except Exception as e:
                 logger.warn(f"EXIF processing error for {file_name}: {e}")
+                file.seek(0)  # Reset stream position after failed Image.open
                 file.save(file_path)
         else:
             # Directly save non-JPEG files
